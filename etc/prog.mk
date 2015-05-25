@@ -14,8 +14,13 @@ include $(OPENMRNPATH)/etc/$(TARGET).mk
 
 include $(OPENMRNPATH)/etc/path.mk
 
-
 VPATH = $(abspath ../../)
+ifeq ($(OS),Windows_NT)
+VPATH_TMP := $(VPATH)
+VPATH = $(VPATH_TMP:/cygdrive/*/=*:/)
+include $(OPENMRNPATH)/etc/path_windows.mk
+else
+
 
 -include $(VPATH)/tests/sources
 
