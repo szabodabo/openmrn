@@ -77,6 +77,10 @@ static void print_packet(const string &pkt)
     fprintf(stderr, "%s\n", pkt.c_str());
 }
 
+/// Test fixture base class for tests that need a CAN-based interface(but not
+/// necessary specific to OpenLCB). The direct use of this class is useful only
+/// when other CAN-based protocol flows need to be tested. The OpenLCB test
+/// fixtures are inheriting from this class.
 class AsyncCanTest : public testing::Test
 {
 public:
@@ -217,18 +221,44 @@ protected:
     std::unique_ptr<HubPort> printer_;
 };
 
+/// Test fixture base class for a second CAN-bus. Usage: use multiple
+/// inheritance in the test fixture to merge both AsyncCanTest and
+/// AsyncCan1Test.
+class AsyncCan1Test {
+protected:
+  AsyncCan1Test() { gc_hub1.register_port(&canBus1_); }
+  ~AsyncCan1Test() {
+    wait_for_main_executor();
+    gc_hub1.unregister_port(&canBus1_);
+  }
+  
+  static void SetUpTestCase() {
+    g_gc_adapter1 =
+        GCAdapterBase::CreateGridConnectAdapter(&gc_hub1, &can_hub1, false);
+  }
+
+  static void TearDownTestCase() {
+    delete g_gc_adapter1;
+  }
+
+#define expect_packet1(gc_packet) \
+  EXPECT_CALL(canBus1_, mwrite(StrCaseEq(gc_packet)))
+  
+  void send_packet1(const string &gc_packet) {
+    Buffer<HubData> *packet;
+    mainBufferPool->alloc(&packet);
+    packet->data()->assign(gc_packet);
+    packet->data()->skipMember_ = &canBus1_;
+    gc_hub1.send(packet);
+  }
+
+  /// Helper object for setting expectations on the packets sent on the bus.
+  StrictMock<MockSend> canBus1_;
+};
+
+
 namespace nmranet
 {
-
-/*
-const char *Node::MANUFACTURER = "Stuart W. Baker";
-const char *Node::HARDWARE_REV = "N/A";
-const char *Node::SOFTWARE_REV = "0.1";
-
-const size_t Datagram::POOL_SIZE = 10;
-const size_t Datagram::THREAD_STACK_SIZE = 512;
-const size_t Stream::CHANNELS_PER_NODE = 10;
-const uint16_t Stream::MAX_BUFFER_SIZE = 512;*/
 
 static const NodeID TEST_NODE_ID = 0x02010d000003ULL;
 
@@ -331,6 +361,7 @@ protected:
     bool pendingAliasAllocation_;
 };
 
+/// Base class for test cases with one virtual node on a CANbus interface.
 class AsyncNodeTest : public AsyncIfTest
 {
 protected:
@@ -369,6 +400,10 @@ protected:
     Node *node_;
 };
 
+/// Test handler for receiving incoming nmranet Message objects from a bus. The
+/// incoming messages need GoogleMock expectations.
+///
+/// Usage: see file src/nmranet/IfCan.cxxtest
 class MockMessageHandler : public MessageHandler
 {
 public:
@@ -381,6 +416,8 @@ public:
     }
 };
 
+/// GoogleMock matcher on a Payload being equal to a given 64-bit value in
+/// network byte order. (Typically an event id.)
 MATCHER_P(IsBufferValue, id, "")
 {
     uint64_t value = htobe64(id);
@@ -391,12 +428,16 @@ MATCHER_P(IsBufferValue, id, "")
     return true;
 }
 
+/// GoogleMock matcher on a Payload being equal to a given string (C or C++
+/// style).
 MATCHER_P(IsBufferValueString, expected, "")
 {
     string s(expected);
     return arg == s;
 }
 
+/// GoogleMock matcher on a Payload being equal to a given 48-bit value in
+/// network byte order (typically a Node ID).
 MATCHER_P(IsBufferNodeValue, id, "")
 {
     uint64_t value = htobe64(id);
@@ -419,6 +460,7 @@ MATCHER_P(IsBufferNodeValue, id, "")
     return true;
 }
 
+/// GoogleMock matcher on a Payload being equal to a given 6-byte string.
 MATCHER_P(IsBufferNodeValueString, id, "")
 {
     uint64_t value = htobe64(id);

@@ -8,10 +8,12 @@ CXXSRCS += Buffer.cxx \
            GridConnect.cxx \
            logging.cxx \
            GridConnectHub.cxx \
+           HubDeviceSelect.cxx \
 	   Crc.cxx \
            gc_format.cxx \
            HubDevice.cxx \
            GcTcpHub.cxx \
+	   StringPrintf.cxx \
            socket_listener.cxx \
            socket_client.cxx \
            constants.cxx \

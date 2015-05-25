@@ -52,35 +52,7 @@
 #include "executor/Service.hxx"
 #include "os/TempFile.hxx"
 #include "os/os.h"
-
-namespace testing
-{
-/** Conveninence utility to do a printf directly into a C++ string. */
-string StringPrintf(const char *format, ...)
-{
-    static const int kBufSize = 1000;
-    char buffer[kBufSize];
-    va_list ap;
-
-    va_start(ap, format);
-    int n = vsnprintf(buffer, kBufSize, format, ap);
-    va_end(ap);
-    HASSERT(n >= 0);
-    if (n < kBufSize)
-    {
-        return string(buffer, n);
-    }
-    string ret(n + 1, 0);
-    va_start(ap, format);
-    n = vsnprintf(&ret[0], ret.size(), format, ap);
-    va_end(ap);
-    HASSERT(n >= 0);
-    ret.resize(n);
-    return ret;
-}
-}
-
-using testing::StringPrintf;
+#include "utils/StringPrintf.hxx"
 
 int appl_main(int argc, char *argv[])
 {
@@ -113,7 +85,7 @@ Service g_service(&g_executor);
  * the last command in a TEST_F. */
 void wait_for_main_executor()
 {
-    ExecutorGuard<decltype(g_executor)> guard(&g_executor);
+    ExecutorGuard guard(&g_executor);
     guard.wait_for_notification();
 }
 
@@ -151,10 +123,11 @@ private:
 };
 
 
-/* Utility class to block an executor for a while.
+/** Utility class to block an executor for a while.
  *
  * Usage: add an instance of BlockExecutor to the executor you want to block,
- * then call wait_for_blocked() and later release_block().
+ * (using @ref ExecutorBase::add) then call wait_for_blocked() and later
+ * release_block() to unblock the executor.
  */
 class BlockExecutor : public Executable
 {
@@ -226,6 +199,7 @@ public:
     }
 
 private:
+    /// Virtual base class for the destructible holders.
     class HolderBase
     {
     public:
@@ -234,6 +208,9 @@ private:
         }
     };
 
+    /// Type-accurate class that holds the temporary variable with the old
+    /// value, the pointer to the variable and restores the previous state upon
+    /// destruction.
     template <class T> class Holder : public HolderBase
     {
     public:

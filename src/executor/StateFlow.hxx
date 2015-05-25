@@ -35,6 +35,7 @@
 #ifndef _EXECUTOR_STATEFLOW_HXX_
 #define _EXECUTOR_STATEFLOW_HXX_
 
+#include <unistd.h>
 #include <type_traits>
 #include <functional>
 
@@ -130,7 +131,24 @@
 
 template <class T> class FlowInterface;
 
-/** Runs incoming Messages through a State Flow.
+/** Base class for state machines. A state machine is a form of collaborative
+ * multi-tasking. StateFlows can be scheduled on an executor, and alternately
+ * perform synchronous code (executing a state handler function) and an
+ * asynchronous operation (waiting for some event to happen). The asynchronous
+ * operations may include waiting for a message to arrive in a queue, or
+ * waiting for the allocation of an empty buffer, or a notification from a
+ * called lower-level library that a specific request has completed processing.
+ *
+ * The current state of the StateFlow is represented by a function pointer the
+ * points to a member function of the current object. When the state flow is
+ * scheduled on an executor, it will execute the current state function. Upon
+ * the return of that state function some Action will be performed. The Actions
+ * to perform are represented by functions on the StateFlowBase class that
+ * return an Action structure, such as allocate_and_call(), wait_and_call(), or
+ * call_immediately(). Most factory functions that create these Actions will
+ * receive the new state handler as an argument; when the asynchronous action
+ * is complete, the state flow will resume execution in the presented state
+ * handler function.
  */
 class StateFlowBase : public Executable
 {
@@ -402,6 +420,148 @@ protected:
         return wait_and_call(c);
     }
 
+    struct StateFlowSelectHelper;
+
+    Action read_repeated(StateFlowSelectHelper* helper, int fd, void* buf, size_t size, Callback c, unsigned priority = Selectable::MAX_PRIO) {
+        helper->reset(Selectable::READ, fd, priority);
+        helper->rbuf_ = static_cast<uint8_t*>(buf);
+        helper->remaining_ = size;
+        helper->readFully_ = 1;
+        helper->nextState_ = c;
+        allocationResult_ = helper;
+        return call_immediately(STATE(internal_try_read));
+    }
+
+    Action read_single(StateFlowSelectHelper* helper, int fd, void* buf, size_t size, Callback c, unsigned priority = Selectable::MAX_PRIO) {
+        helper->reset(Selectable::READ, fd, priority);
+        helper->rbuf_ = static_cast<uint8_t*>(buf);
+        helper->remaining_ = size;
+        helper->readFully_ = 0;
+        helper->nextState_ = c;
+        allocationResult_ = helper;
+        return call_immediately(STATE(internal_try_read));
+    }
+
+    Action internal_try_read()
+    {
+        StateFlowSelectHelper *h =
+            static_cast<StateFlowSelectHelper *>(allocationResult_);
+        if (!h->remaining_)
+        {
+            h->rbuf_ = nullptr;
+            return call_immediately(h->nextState_);
+        }
+        int count = ::read(h->fd(), h->rbuf_, h->remaining_);
+        if (count > 0)
+        {
+            h->remaining_ -= count;
+            h->rbuf_ += count;
+            if (h->remaining_ && h->readFully_)
+            {
+                return again();
+            }
+            else
+            {
+                h->rbuf_ = nullptr;
+                return call_immediately(h->nextState_);
+            }
+        }
+        if (count < 0 &&
+            (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+        {
+            // Blocked.
+            service()->executor()->select(h);
+            return wait();
+        }
+        // Now: we are at an unknown error or EOF.
+        h->rbuf_ = nullptr;
+        return call_immediately(h->nextState_);
+    }
+
+    Action write_repeated(StateFlowSelectHelper* helper, int fd, const void* buf, size_t size, Callback c, unsigned priority = Selectable::MAX_PRIO) {
+        helper->reset(Selectable::WRITE, fd, priority);
+        helper->wbuf_ = static_cast<const uint8_t*>(buf);
+        helper->remaining_ = size;
+        helper->readFully_ = 1;
+        helper->nextState_ = c;
+        allocationResult_ = helper;
+        return call_immediately(STATE(internal_try_write));
+    }
+
+    Action internal_try_write()
+    {
+        StateFlowSelectHelper *h =
+            static_cast<StateFlowSelectHelper *>(allocationResult_);
+        if (!h->remaining_)
+        {
+            return call_immediately(h->nextState_);
+        }
+        int count = ::write(h->fd(), h->wbuf_, h->remaining_);
+        if (count > 0)
+        {
+            h->remaining_ -= count;
+            h->wbuf_ += count;
+            return again();
+        }
+        if (count <= 0 &&
+            (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+        {
+            // Blocked.
+            service()->executor()->select(h);
+            return wait();
+        }
+#ifdef STATEFLOW_DEBUG_WRITE_ERRORS
+        static volatile int scount;
+        static volatile int serrno;
+        scount = count;
+        serrno = errno;
+        LOG(FATAL, "failed to write count=%d errno=%d", scount, serrno);
+        DIE("failed write");
+#endif
+        // Now: we are at an unknown error or EOF.
+        return call_immediately(h->nextState_);
+    }
+
+    /** Use this class to read from an fd using select() in a state flow.
+     *
+     * Usage:
+     *
+     * class FooFlow : public StateFlow(may use any variant)
+     * {
+     *   Action do_read()
+     *   {
+     *      return read_repeated(&readHelper_, fd_, buf_, 32, STATE(read_done));
+     *   }
+     *   ...
+     *   private:
+     *    StateFlowSelectHelper readHelper_;
+     *    int fd_;
+     *    char buf_[32];
+     * }
+    */
+    struct StateFlowSelectHelper : public Selectable
+    {
+        StateFlowSelectHelper(StateFlowBase *parent)
+            : Selectable(parent)
+        {
+        }
+
+        union
+        {
+            const uint8_t *wbuf_;
+            uint8_t *rbuf_;
+        };
+
+        /** State to transition to after the read is complete. */
+        Callback nextState_;
+        /** 1 if we need to read until all remaining_ is consumed. 0 if we want
+         * to
+         * return as soon as we have read something. */
+        unsigned readFully_ : 1;
+        /** Number of bytes still outstanding to read. */
+        unsigned remaining_ : 31;
+    };
+
 private:
     /** Service this StateFlow belongs to */
     Service *service_;
@@ -522,7 +682,7 @@ protected:
     void reset_message(BufferBase* message, unsigned priority) {
         HASSERT(!currentMessage_);
         currentMessage_ = message;
-        currentPriority_ = priority;
+        set_priority(priority);
     }
 
     /// @returns the priority of the message currently being processed.
@@ -534,7 +694,17 @@ protected:
     /// Overrides the current priority.
     void set_priority(unsigned priority)
     {
-        currentPriority_ = priority;
+        currentPriority_ = std::min(priority, MAX_PRIORITY);
+    }
+
+    /** Call this from the constructor of the child class to do some work
+     * before the main queue processing loop begins. When the initialization
+     * states are done, call 'return exit()' to start the main loop. */
+    void start_flow_at_init(Callback c)
+    {
+        reset_flow(c);
+        notify();
+        isWaiting_ = 0;
     }
 
 private:
@@ -564,6 +734,11 @@ private:
 
 template <class MessageType> class FlowInterface;
 
+/// Abstract class for message recipients. A common base class for various
+/// handlers. Most of them are implemented as StateFlow classes. However, if
+/// the receiving flow does not need asynchronous handling, it is possible to
+/// directly implement a descendant of a specific FlowInterface by overriding
+/// the send() method.
 template <class MessageType> class FlowInterface
 {
 public:
@@ -648,6 +823,12 @@ StateFlowBase::get_allocation_result(FlowInterface<Buffer<T>> *target_flow)
 }
 
 
+/** State flow base class with queue but generic message type.
+ *
+ * This base class contains the function definitions of StateFlow that don't
+ * need the actual message type. It's sole purpose is to avoid having to
+ * compile these function multiple times for different message type
+ * template arguments. */
 template<class QueueType>
 class UntypedStateFlow : public StateFlowWithQueue {
 public:
@@ -672,7 +853,7 @@ protected:
         if (isWaiting_)
         {
             isWaiting_ = 0;
-            currentPriority_ = priority;
+            set_priority(priority);
             this->notify();
         }
     }
@@ -705,6 +886,8 @@ private:
     QueueType queue_;
 };
 
+/// Helper class in the StateFlow hierarchy. Merges the typed
+/// FlowInterface<Msg> abstract base into the regular stateflow hierarchy.
 template <class MessageType, class Base>
 class TypedStateFlow : public Base, public FlowInterface<MessageType>
 {
@@ -766,6 +949,10 @@ protected:
 };
 
 
+/// State flow with a given typed input queue.
+///
+/// MessageType has to be Buffer<T>. QueueType is usually QList<N>, depending
+/// on how many priority bands are necessary.
 template<class MessageType, class QueueType>
 class StateFlow : public TypedStateFlow<MessageType, UntypedStateFlow<QueueType> > {
 public:

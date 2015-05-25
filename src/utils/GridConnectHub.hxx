@@ -42,6 +42,12 @@ class Pipe;
 template <class T> class FlowInterface;
 template <class T, int N> class DispatchFlow;
 
+/// Publicly visible API for the gridconnect-to-CAN bridge.  This bridge links
+/// two Hubs, one typed string, the other typed CanHubData, by
+/// parsing/rendering the packets from the gridconnect protocol.
+///
+/// This public-facing API allows creating and managing the bridge as necessary
+/// for production code and unittests.
 class GCAdapterBase
 {
 public:
@@ -96,11 +102,12 @@ private:
 };
 
 /** Creates a new port on a CAN hub in gridconnect format. The port will
- * automatically be closed and deleted when the fd encounters an error.
+ * automatically be closed, deleted and on_exit notified when the fd encounters
+ * an error.
  *
  * NOTE(balazs.racz): this cound be expanded to return an object pointer via
  * which the port can be closed. Also a method for notifying the caller about a
  * closedown would be helpful. */
-void create_gc_port_for_can_hub(CanHubFlow* can_hub, int fd);
+void create_gc_port_for_can_hub(CanHubFlow* can_hub, int fd, Notifiable* on_exit = nullptr);
 
 #endif //_UTILS_GRIDCONNECTHUB_HXX_

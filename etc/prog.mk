@@ -24,20 +24,17 @@ FULLPATHCSRCS    := $(wildcard $(VPATH)/*.c)
 FULLPATHCXXSRCS  := $(wildcard $(VPATH)/*.cxx)
 FULLPATHCPPSRCS  := $(wildcard $(VPATH)/*.cpp)
 FULLPATHXMLSRCS  := $(wildcard $(VPATH)/*.xml)
-FULLPATHTESTSRCS ?= $(wildcard $(VPATH)/tests/*_test.cc)
 
 ASMSRCS  = $(notdir $(FULLPATHASMSRCS)) $(wildcard *.S)
 CSRCS    = $(notdir $(FULLPATHCSRCS))   $(wildcard *.c)
 CXXSRCS  = $(notdir $(FULLPATHCXXSRCS)) $(wildcard *.cxx)
 CPPSRCS  = $(notdir $(FULLPATHCPPSRCS)) $(wildcard *.cpp)
 XMLSRCS  = $(notdir $(FULLPATHXMLSRCS)) $(wildcard *.xml)
-TESTSRCS = $(notdir $(FULLPATHTESTSRCS)) $(wildcard *_test.cc)
 
 $(info fullptest=$(FULLPATHTESTSRCS) test=$(TESTSRCS))
 
 OBJS = $(CXXSRCS:.cxx=.o) $(CPPSRCS:.cpp=.o) $(CSRCS:.c=.o) $(ASMSRCS:.S=.o) \
        $(XMLSRCS:.xml=.o)
-TESTOBJS := $(TESTSRCS:.cc=.o)
 
 LIBDIR = $(OPENMRNPATH)/targets/$(TARGET)/lib
 FULLPATHLIBS = $(wildcard $(LIBDIR)/*.a) $(wildcard lib/*.a)
@@ -100,7 +97,12 @@ lib/timestamp : FORCE $(BUILDDIRS)
 # This file acts as a guard describing when the last libsomething.a was remade
 # in the core target libraries.
 $(LIBDIR)/timestamp: FORCE $(BUILDDIRS)
-	flock $(OPENMRNPATH)/targets/$(TARGET) -c "$(MAKE) -C $(OPENMRNPATH)/targets/$(TARGET) all"
+ifdef FLOCKPATH
+	$(FLOCKPATH)/flock $(OPENMRNPATH)/targets/$(TARGET) -c "$(MAKE) -C $(OPENMRNPATH)/targets/$(TARGET) all"
+else
+	echo warning: no flock support. If you use make -jN then you can run into occasional compilation errors when multiple makes are progressing in the same directory. Usually re-running make solved them.
+	$(MAKE) -C $(OPENMRNPATH)/targets/$(TARGET) all
+endif
 
 # We cannot make lib/timestamp a phony target or else every test will always be
 # remade.
@@ -148,7 +150,7 @@ cg.svg: $(EXECUTABLE).ndlst $(OPENMRNPATH)/bin/callgraph.py
 .SUFFIXES:
 .SUFFIXES: .o .c .cxx .cpp .S .xml .cout .cxxout
 
-.xml.o:
+.xml.o: $(OPENMRNPATH)/bin/build_cdi.py
 	$(OPENMRNPATH)/bin/build_cdi.py -i $< -o $*.cxxout
 	$(CXX) $(CXXFLAGS) -x c++ $*.cxxout -o $@
 	$(CXX) -MM $(CXXFLAGS) -x c++ $*.cxxout > $*.d
@@ -180,6 +182,23 @@ tests:
 	@echo "***Not building tests at target $(TARGET), because missing: $(TEST_MISSING_DEPS) ***"
 
 else
+ifeq (1,1)
+
+SRCDIR=$(abspath ../../)
+#old code from prog.mk
+#$(TEST_EXTRA_OBJS) $(OBJEXTRA) $(LDFLAGS)  $(LIBS) $(SYSLIBRARIES)
+#new code in core_test.mk
+#$(LDFLAGS) -los  $< $(TESTOBJSEXTRA) $(LINKCORELIBS) $(SYSLIBRARIES) 
+#TESTOBJSEXTRA += $(TEST_EXTRA_OBJS)
+SYSLIBRARIES += $(LIBS)
+TESTEXTRADEPS += lib/timestamp
+include $(OPENMRNPATH)/etc/core_test.mk
+
+else
+FULLPATHTESTSRCS ?= $(wildcard $(VPATH)/tests/*_test.cc)
+TESTSRCS = $(notdir $(FULLPATHTESTSRCS)) $(wildcard *_test.cc)
+TESTOBJS := $(TESTSRCS:.cc=.o)
+
 VPATH:=$(VPATH):$(GTESTPATH)/src:$(GTESTSRCPATH):$(GMOCKPATH)/src:$(GMOCKSRCPATH):$(abspath ../../tests)
 INCLUDES += -I$(GTESTPATH)/include -I$(GTESTPATH) -I$(GMOCKPATH)/include -I$(GMOCKPATH)
 
@@ -224,6 +243,7 @@ tests : all $(TEST_OUTPUTS)
 
 mksubdirs:
 	[ -d lib ] || mkdir lib
+endif # old testrunner code
 
 endif  # if we are able to run tests
 
