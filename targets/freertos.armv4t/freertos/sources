@@ -7,9 +7,8 @@ CSRCS += list.c \
          timers.c \
          port.c \
          heap_3.c \
-         event_groups.c
-
-ARM_CSRCS += croutine.c \
+         event_groups.c \
+         croutine.c \
          tasks.c \
          portISR.c \
          
