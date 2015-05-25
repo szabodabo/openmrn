@@ -6,7 +6,11 @@ include $(OPENMRNPATH)/etc/env.mk
 
 # Get the $(TOOLPATH)
 ifeq ($(TOOLPATH),)
-TOOLPATH=$(MIPSGCCPATH)
+ifneq ($(strip $(MIPSGCCPATH)),)
+TOOLPATH:=$(MIPSGCCPATH)
+else
+TOOLPATH=
+endif
 endif
 
 #DEPS+= MIPSGCCPATH PIC32MXLIBPATH
