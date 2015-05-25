@@ -43,6 +43,12 @@ ASMSRCS = $(notdir $(FULLPATHASMSRCS))
 endif
 endif
 
+ifeq ($(OS),Windows_NT)
+COMPILE_PREFIX := ccache
+else
+COMPILE_PREFIX :=
+endif
+
 OBJS = $(CXXSRCS:.cxx=.o) $(CPPSRCS:.cpp=.o) $(CSRCS:.c=.o) $(ARM_CSRCS:.c=.o) $(ASMSRCS:.S=.o)
 LIBNAME = lib$(LIBBASENAME).a
 
@@ -79,19 +85,19 @@ endif
 .SUFFIXES: .o .c .cxx .cpp .S
 
 .cpp.o:
-	$(CXX) $(CXXFLAGS) -MD -MF $*.d $< -o $@
+	$(COMPILE_PREFIX) $(CXX) $(CXXFLAGS) -MD -MF $*.d $< -o $@
 
 .cxx.o:
-	$(CXX) $(CXXFLAGS) -MD -MF $*.d $< -o $@
+	$(COMPILE_PREFIX) $(CXX) $(CXXFLAGS) -MD -MF $*.d $< -o $@
 
 .S.o:
-	$(AS) $(ASFLAGS) -MD -MF $*.d $< -o $@
+	$(COMPILE_PREFIX) $(AS) $(ASFLAGS) -MD -MF $*.d $< -o $@
 
 .c.o:
-	$(CC) $(CFLAGS) -MD -MF $*.d $< -o $@
+	$(COMPILE_PREFIX) $(CC) $(CFLAGS) -MD -MF $*.d $< -o $@
 
 $(ARM_OBJS): %.o : %.c
-	$(CC) $(ARM_CFLAGS) -MD -MF $*.d $< -o $@
+	$(COMPILE_PREFIX) $(CC) $(ARM_CFLAGS) -MD -MF $*.d $< -o $@
 
 
 $(LIBNAME): $(OBJS)
