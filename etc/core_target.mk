@@ -20,4 +20,18 @@ SUBDIRS = $(CORELIBS) $(SYSLIB_SUBDIRS) lib
 # This defines how to create nonexistant directories.
 MKSUBDIR_OPENMRNINCLUDE=lib.mk
 
+DEPS += TOOLPATH
+MISSING_DEPS:=$(call find_missing_deps,$(DEPS))
+
+ifneq ($(MISSING_DEPS),)
+
+all docs clean veryclean tests mksubdirs:
+	@echo "******************************************************************"
+	@echo "*"
+	@echo "*   Unable to build for $(TARGET)/$(REL_DIR), missing dependencies: $(MISSING_DEPS)"
+	@echo "*"
+	@echo "******************************************************************"
+
+else
 include $(OPENMRNPATH)/etc/recurse.mk
+endif
