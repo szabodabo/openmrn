@@ -18,7 +18,7 @@ ARMGCCPATH ?= $(shell \
 sh -c "if [ -d /a/openmrn/windows/armgcc/default/bin ]; then echo a:/openmrn/windows/armgcc/default; \
      elif [ -d /b/openmrn/windows/armgcc/default/bin ]; then echo b:/openmrn/windows/armgcc/default; \
      elif [ -d /c/openmrn/windows/armgcc/default/bin ]; then echo c:/openmrn/windows/armgcc/default; \
-     elif [ -d /d/openmrn/windows/armgcc/default/bin ]; then echo d:/openmrn/windows/armgcc/default; \
+     elif [ -d d:/openmrn/windows/armgcc/default/bin ]; then echo d:/openmrn/windows/armgcc/default; \
      elif [ -d /e/openmrn/windows/armgcc/default/bin ]; then echo e:/openmrn/windows/armgcc/default; \
      elif [ -d /f/openmrn/windows/armgcc/default/bin ]; then echo f:/openmrn/windows/armgcc/default; \
      elif [ -d /g/openmrn/windows/armgcc/default/bin ]; then echo g:/openmrn/windows/armgcc/default; \
