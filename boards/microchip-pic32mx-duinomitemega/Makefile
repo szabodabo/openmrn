@@ -9,20 +9,3 @@ SYSLIBRARIESEXTRA = -lfreertos_drivers_plib_pic32mx795
 
 include $(OPENMRNPATH)/etc/prog.mk
 
-CORECFLAGS += -D_SUPPRESS_PLIB_WARNING
-CFLAGS += -fgnu89-inline
-
-ifeq ($(MISSING_DEPS),)
-
-all: $(EXECUTABLE).hex $(EXECUTABLE).delf $(EXECUTABLE).lst
-
-%.delf: %.elf
-	$(OBJCOPY) $$($(OBJDUMP) -h $< | grep ' b[df]' | cut  -b 5- | sed -e 's/^\([^ ]*\) .*$$/--change-section-lma \1-0xA0000000/' | tr '\n' ' ') $< $@
-#	$(OBJDUMP) -h $< | grep ' b[df]'
-#	cp -f $< $@
-
-%.hex: %.delf
-	$(OBJDUMP) -h $<
-	$(OBJCOPY) -O ihex $< $@
-
-endif  #MISSING_DEPS
