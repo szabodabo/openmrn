@@ -19,7 +19,7 @@ ifeq ($(OS),Windows_NT)
 VPATH_TMP := $(VPATH)
 VPATH = $(VPATH_TMP:/cygdrive/*/=*:/)
 include $(OPENMRNPATH)/etc/path_windows.mk
-else
+endif
 
 
 -include $(VPATH)/tests/sources
