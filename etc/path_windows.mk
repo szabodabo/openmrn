@@ -25,6 +25,18 @@ sh -c "if [ -d /a/openmrn/windows/armgcc/default/bin ]; then echo a:/openmrn/win
      else echo ; fi" \
 )
 
+################### MIPS-GCC #####################
+MIPSGCCPATH ?= $(shell \
+sh -c "if [ -d /a/openmrn/windows/mipsgcc/default/bin ]; then echo a:/openmrn/windows/mipsgcc/default; \
+     elif [ -d /b/openmrn/windows/mipsgcc/default/bin ]; then echo b:/openmrn/windows/mipsgcc/default; \
+     elif [ -d /c/openmrn/windows/mipsgcc/default/bin ]; then echo c:/openmrn/windows/mipsgcc/default; \
+     elif [ -d /d/openmrn/windows/mipsgcc/default/bin ]; then echo d:/openmrn/windows/mipsgcc/default; \
+     elif [ -d /e/openmrn/windows/mipsgcc/default/bin ]; then echo e:/openmrn/windows/mipsgcc/default; \
+     elif [ -d /f/openmrn/windows/mipsgcc/default/bin ]; then echo f:/openmrn/windows/mipsgcc/default; \
+     elif [ -d /g/openmrn/windows/mipsgcc/default/bin ]; then echo g:/openmrn/windows/mipsgcc/default; \
+     else echo ; fi" \
+)
+
 ################### TIVAWAREPATH #####################
 TIVAWAREPATH ?= $(shell \
 sh -c "if [ -d /a/openmrn/ti/TivaWare/default/driverlib ]; then echo a:/openmrn/ti/TivaWare/default; \
