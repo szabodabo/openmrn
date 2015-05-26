@@ -24,6 +24,11 @@ export PARENTLIB := $(LIBBASENAME)
 INCLUDES += -I./ -I$(OPENMRNPATH)/src/ -I$(OPENMRNPATH)/include
 include $(OPENMRNPATH)/etc/$(TARGET).mk
 
+ifeq ($(OS),Windows_NT)
+VPATH_TMP := $(VPATH)
+VPATH = $(foreach mypath,$(VPATH_TMP),$(shell cygpath -ma $(mypath)))
+endif
+
 exist := $(wildcard $(SRCDIR)/sources)
 ifneq ($(strip $(exist)),)
 include $(VPATH)/sources
