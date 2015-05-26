@@ -18,7 +18,7 @@ VPATH = $(abspath ../../)
 @echo $(VPATH)
 ifeq ($(OS),Windows_NT)
 VPATH_TMP := $(VPATH)
-VPATH = $(foreach path,$(VPATH_TMP),$(shell cygpath -ma $path))
+VPATH = $(foreach mypath,$(VPATH_TMP),$(shell cygpath -ma $(mypath)))
 include $(OPENMRNPATH)/etc/path_windows.mk
 endif
 @echo $(VPATH)
