@@ -18,10 +18,7 @@ VPATH = $(abspath ../../)
 ifeq ($(OS),Windows_NT)
 VPATH_TMP := $(VPATH)
 VPATH = $(foreach mypath,$(VPATH_TMP),$(shell cygpath -ma $(mypath)))
-include $(OPENMRNPATH)/etc/path_windows.mk
 endif
-
-
 
 -include $(VPATH)/tests/sources
 
@@ -63,6 +60,12 @@ endif
 ifdef BOARD
 INCLUDES += -D$(BOARD)
 endif
+
+ifeq ($(OS),Windows_NT)
+INCLUDES_TMP := $(INCLUDES)
+INCLUDES = $(foreach includes,$(INCLUDES_TMP),$(shell cygpath -ma $(includes)))
+endif
+
 CFLAGS += $(INCLUDES)
 CXXFLAGS += $(INCLUDES)
 LDFLAGS += -Llib -L$(LIBDIR)
