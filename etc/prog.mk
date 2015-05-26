@@ -15,13 +15,12 @@ include $(OPENMRNPATH)/etc/$(TARGET).mk
 include $(OPENMRNPATH)/etc/path.mk
 
 VPATH = $(abspath ../../)
-@echo $(VPATH)
 ifeq ($(OS),Windows_NT)
 VPATH_TMP := $(VPATH)
 VPATH = $(foreach mypath,$(VPATH_TMP),$(shell cygpath -ma $(mypath)))
 include $(OPENMRNPATH)/etc/path_windows.mk
 endif
-@echo $(VPATH)
+
 
 
 -include $(VPATH)/tests/sources
