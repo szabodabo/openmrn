@@ -17,7 +17,7 @@ include $(OPENMRNPATH)/etc/path.mk
 VPATH = $(abspath ../../)
 ifeq ($(OS),Windows_NT)
 VPATH_TMP := $(VPATH)
-VPATH = $(VPATH_TMP:/cygdrive/*/=*:/)
+VPATH = $(foreach path,$(VPATH_TMP),$(shell cygpath -ma $path))
 include $(OPENMRNPATH)/etc/path_windows.mk
 endif
 
