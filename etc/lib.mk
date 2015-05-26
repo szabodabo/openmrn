@@ -45,7 +45,7 @@ endif
 
 ifeq ($(OS),Windows_NT)
 #COMPILE_PREFIX := ccache
-INCLUDES_TMP := $(INCLUDES:-I=)
+INCLUDES_TMP := $(subst -I,,$(INCLUDES))
 INCLUDES = $(foreach mypath,$(INCLUDES_TMP),-I$(shell cygpath -ma $(mypath)))
 else
 COMPILE_PREFIX :=
