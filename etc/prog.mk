@@ -54,7 +54,7 @@ INCLUDES += -I.
 INCLUDES += -I$(OPENMRNPATH)/src/ -I$(OPENMRNPATH)/include
 ifdef APP_PATH
 ifeq ($(OS),Windows_NT)
-INCLUDES += -I$(shell cygpath -ma $(APP_PATH)))
+INCLUDES += -I$(shell cygpath -ma $(APP_PATH))
 else
 INCLUDES += -I$(APP_PATH)
 endif
