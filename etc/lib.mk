@@ -24,11 +24,6 @@ export PARENTLIB := $(LIBBASENAME)
 INCLUDES += -I./ -I$(OPENMRNPATH)/src/ -I$(OPENMRNPATH)/include
 include $(OPENMRNPATH)/etc/$(TARGET).mk
 
-ifeq ($(OS),Windows_NT)
-VPATH_TMP := $(VPATH)
-VPATH = $(foreach mypath,$(VPATH_TMP),$(shell cygpath -ma $(mypath)))
-endif
-
 exist := $(wildcard $(SRCDIR)/sources)
 ifneq ($(strip $(exist)),)
 include $(VPATH)/sources
@@ -46,14 +41,6 @@ CXXSRCS = $(notdir $(FULLPATHCXXSRCS))
 CPPSRCS = $(notdir $(FULLPATHCPPSRCS))
 ASMSRCS = $(notdir $(FULLPATHASMSRCS))
 endif
-endif
-
-ifeq ($(OS),Windows_NT)
-#COMPILE_PREFIX := ccache
-INCLUDES_TMP := $(subst -I,,$(INCLUDES))
-INCLUDES = $(foreach mypath,$(INCLUDES_TMP),-I$(shell cygpath -ma $(mypath)))
-else
-COMPILE_PREFIX :=
 endif
 
 OBJS = $(CXXSRCS:.cxx=.o) $(CPPSRCS:.cpp=.o) $(CSRCS:.c=.o) $(ARM_CSRCS:.c=.o) $(ASMSRCS:.S=.o)
@@ -92,19 +79,19 @@ endif
 .SUFFIXES: .o .c .cxx .cpp .S
 
 .cpp.o:
-	$(COMPILE_PREFIX) $(CXX) $(CXXFLAGS) -MD -MF $*.d $< -o $@
+	$(CXX) $(CXXFLAGS) -MD -MF $*.d $< -o $@
 
 .cxx.o:
-	$(COMPILE_PREFIX) $(CXX) $(CXXFLAGS) -MD -MF $*.d $< -o $@
+	$(CXX) $(CXXFLAGS) -MD -MF $*.d $< -o $@
 
 .S.o:
-	$(COMPILE_PREFIX) $(AS) $(ASFLAGS) -MD -MF $*.d $< -o $@
+	$(AS) $(ASFLAGS) -MD -MF $*.d $< -o $@
 
 .c.o:
-	$(COMPILE_PREFIX) $(CC) $(CFLAGS) -MD -MF $*.d $< -o $@
+	$(CC) $(CFLAGS) -MD -MF $*.d $< -o $@
 
 $(ARM_OBJS): %.o : %.c
-	$(COMPILE_PREFIX) $(CC) $(ARM_CFLAGS) -MD -MF $*.d $< -o $@
+	$(CC) $(ARM_CFLAGS) -MD -MF $*.d $< -o $@
 
 
 $(LIBNAME): $(OBJS)
