@@ -5,6 +5,7 @@ export OPENMRNPATH
 SUBDIRS = targets doc applications test
 
 include $(OPENMRNPATH)/etc/recurse.mk
+include $(OPENMRNPATH)/etc/windows_distro.mk
 
 # Makes sure all the targets are compiled before building the test application.
 build-test: build-targets
@@ -32,3 +33,4 @@ js-tests:
 	$(MAKE) -C targets/js.emscripten run-tests
 
 alltests: tests llvm-tests
+
