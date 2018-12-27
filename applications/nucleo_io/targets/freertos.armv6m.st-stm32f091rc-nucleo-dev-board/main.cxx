@@ -57,9 +57,14 @@
 
 // These preprocessor symbols are used to select which physical connections
 // will be enabled in the main(). See @ref appl_main below.
+// If any of these are set via environment vars in the Makefile,
+// the Makefile has authority for which of these are used
+// (and they shouldn't be set/unset in the code).
+#ifndef MAKEFILE_DEBUG_OVERRIDE
 //#define SNIFF_ON_SERIAL
 //#define SNIFF_ON_USB
 #define HAVE_PHYSICAL_CAN_PORT
+#endif // MAKEFILE_DEBUG_OVERRIDE
 
 // Changes the default behavior by adding a newline after each gridconnect
 // packet. Makes it easier for debugging the raw device.
