@@ -32,17 +32,17 @@
  * @date 5 Jun 2015
  */
 
-#include "os/os.h"
 #include "nmranet_config.h"
+#include "os/os.h"
 
-#include "openlcb/SimpleStack.hxx"
 #include "openlcb/ConfiguredConsumer.hxx"
 #include "openlcb/ConfiguredProducer.hxx"
+#include "openlcb/SimpleStack.hxx"
 
-#include "freertos_drivers/st/Stm32Gpio.hxx"
+#include "config.hxx"
 #include "freertos_drivers/common/BlinkerGPIO.hxx"
 #include "freertos_drivers/common/DummyGPIO.hxx"
-#include "config.hxx"
+#include "freertos_drivers/st/Stm32Gpio.hxx"
 #include "hardware.hxx"
 
 // These preprocessor symbols are used to select which physical connections
@@ -95,8 +95,7 @@ extern const char *const openlcb::SNIP_DYNAMIC_FILENAME =
 // The producers need to be polled repeatedly for changes and to execute the
 // debouncing algorithm. This class instantiates a refreshloop and adds the two
 // producers to it.
-openlcb::RefreshLoop loop(
-    stack.node(), {/*producer_sw1.polling()*/});
+openlcb::RefreshLoop loop(stack.node(), {/*producer_sw1.polling()*/});
 
 /** Entry point to application.
  * @param argc number of command line arguments
