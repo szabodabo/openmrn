@@ -47,9 +47,9 @@
 
 // These preprocessor symbols are used to select which physical connections
 // will be enabled in the main(). See @ref appl_main below.
-#define SNIFF_ON_SERIAL
+//#define SNIFF_ON_SERIAL
 //#define SNIFF_ON_USB
-//#define HAVE_PHYSICAL_CAN_PORT
+#define HAVE_PHYSICAL_CAN_PORT
 
 // Changes the default behavior by adding a newline after each gridconnect
 // packet. Makes it easier for debugging the raw device.
@@ -61,6 +61,8 @@ OVERRIDE_CONST(main_thread_stack_size, 1300);
 // Specifies the 48-bit OpenLCB node identifier. This must be unique for every
 // hardware manufactured, so in production this should be replaced by some
 // easily incrementable method.
+#define STM32_UUIC_LOC 0x1FFFF7AC;
+
 extern const openlcb::NodeID NODE_ID = 0x050101011816ULL;
 
 // Sets up a comprehensive OpenLCB stack for a single virtual node. This stack
@@ -81,34 +83,20 @@ extern const char *const openlcb::CONFIG_FILENAME = "/dev/eeprom";
 // The size of the memory space to export over the above device.
 extern const size_t openlcb::CONFIG_FILE_SIZE =
     cfg.seg().size() + cfg.seg().offset();
-static_assert(openlcb::CONFIG_FILE_SIZE <= 300, "Need to adjust eeprom size");
+static_assert(openlcb::CONFIG_FILE_SIZE <= 600, "Need to adjust eeprom size");
 // The SNIP user-changeable information in also stored in the above eeprom
 // device. In general this could come from different eeprom segments, but it is
 // simpler to keep them together.
 extern const char *const openlcb::SNIP_DYNAMIC_FILENAME =
     openlcb::CONFIG_FILENAME;
 
-// Instantiates the actual producer and consumer objects for the given GPIO
-// pins from above. The ConfiguredConsumer class takes care of most of the
-// complicated setup and operation requirements. We need to give it the virtual
-// node pointer, the configuration configuration from the CDI definition, and
-// the hardware pin definition. The virtual node pointer comes from the stack
-// object. The configuration structure comes from the CDI definition object,
-// segment 'seg', in which there is a repeated group 'consumers', and we assign
-// the individual entries to the individual consumers. Each consumer gets its
-// own GPIO pin.
-openlcb::ConfiguredConsumer consumer_green(
-    stack.node(), cfg.seg().consumers().entry<0>(), LED_GREEN_Pin());
-
-// Similar syntax for the producers.
-openlcb::ConfiguredProducer producer_sw1(
-    stack.node(), cfg.seg().producers().entry<0>(), SW_USER_Pin());
+// TODO: Attach CDI config schema to hardware things.
 
 // The producers need to be polled repeatedly for changes and to execute the
 // debouncing algorithm. This class instantiates a refreshloop and adds the two
 // producers to it.
 openlcb::RefreshLoop loop(
-    stack.node(), {producer_sw1.polling()});
+    stack.node(), {/*producer_sw1.polling()*/});
 
 /** Entry point to application.
  * @param argc number of command line arguments
