@@ -61,7 +61,7 @@ OVERRIDE_CONST(main_thread_stack_size, 1300);
 // Specifies the 48-bit OpenLCB node identifier. This must be unique for every
 // hardware manufactured, so in production this should be replaced by some
 // easily incrementable method.
-#define STM32_UUIC_LOC 0x1FFFF7AC;
+#define STM32_UUID_LOC 0x1FFFF7AC;
 
 extern const openlcb::NodeID NODE_ID = 0x050101011816ULL;
 
