@@ -26,6 +26,8 @@ OPENOCDARGS = -f board/st_nucleo_f3.cfg
 export TARGET := freertos.armv7m
 include $(OPENMRNPATH)/etc/prog.mk
 
+include extract_node_uuid.mk
+
 ifneq ($(shell cat node_number.output 2>/dev/null),node_number_prefix $(NODE_NUMBER))
 LOL := $(shell touch NodeId.cxx)
 LOL := $(shell echo 'node_number_prefix $(NODE_NUMBER)' >node_number.output &)
