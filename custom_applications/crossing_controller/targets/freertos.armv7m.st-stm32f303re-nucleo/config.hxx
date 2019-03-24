@@ -20,7 +20,7 @@ extern const SimpleNodeStaticValues SNIP_STATIC_DATA = {
 
 /// Modify this value every time the EEPROM needs to be cleared on the node
 /// after an update.
-static constexpr uint16_t CANONICAL_VERSION = 0x184b;
+static constexpr uint16_t CANONICAL_VERSION = 0x184c;
 
 CDI_GROUP(EventWrapper);
 CDI_GROUP_ENTRY(
@@ -49,6 +49,9 @@ CDI_GROUP_ENTRY(servo_consumers, ServoConsumers, Name("Servo outputs"),
 CDI_GROUP_ENTRY(crossbuck_brightness, Uint8ConfigEntry, Default(100), Min(0),
     Max(100), Name("Crossbuck lamp brightness"),
     Description("Crossbuck lamp brightness, 0-100."));
+CDI_GROUP_ENTRY(crossbuck_flash_rate, Uint16ConfigEntry, Default(1100), Min(250),
+    Max(2000), Name("Crossbuck lamp flash rate"),
+    Description("Crossbuck lamp flash rate in milliseconds, 0-2000."));
 CDI_GROUP_ENTRY(crossbuck_style, Uint8ConfigEntry, Default(0), Min(0), Max(1),
     Name("Crossbuck lamp style"),
     Description("0 for LED, 1 for incandescent."));
