@@ -6,7 +6,7 @@
 namespace openlcb
 {
 
-CDI_GROUP(ServoConsumerConfig);
+CDI_GROUP(ServoConsumerConfig, RepName("Servo"));
 CDI_GROUP_ENTRY(description, StringConfigEntry<16>, Name("Description"),
     Description("User name of this output."));
 CDI_GROUP_ENTRY(event_rotate_min, EventConfigEntry, //
@@ -28,6 +28,11 @@ CDI_GROUP_ENTRY(servo_max_percent, Int16ConfigEntry, Default(100), Min(-99),
     Max(200), Name("Servo Maximum Stop Point Percentage"),
     Description("High-end " SERVO_DESCRIPTION_SUFFIX));
 CDI_GROUP_END(); // ServoConsumerConfig
+
+#define SERVOCONSUMERCONFIG_RESET(servo)               \
+	servo.description().write(fd, "");                 \
+	CDI_FACTORY_RESET(servo.servo_min_percent);        \
+	CDI_FACTORY_RESET(servo.servo_max_percent);        \
 
 } // namespace openlcb
 
