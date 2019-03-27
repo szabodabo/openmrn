@@ -70,28 +70,6 @@ openlcb::RefreshLoop loop(stack.node(), {/*producer_sw1.polling()*/});
 
 crossing_controller::CrossingManager crossing(cfg, stack.node());
 
-//class GateOnOffInterface : public openlcb::BitEventInterface {
-//public:
-//    void set_state(bool new_value) override {
-//        bool old_value = get_local_state();
-//        openlcb::BitEventInterface::set_state(new_value);
-//        if (old_value == new_value) { return; }
-//
-//        if (new_value) {
-//            // Arm the gates
-//            // seems like arming and disarming need a state machine:
-//            // - start crossbucks flashing
-//            // - enable sound
-//            // - kick off servo rotation
-//        } else {
-//            // Disarm the gates
-//            // - kick off servo rotation. when it's done,
-//            //     - disable sound
-//            //     - stop crossbucks flashing
-//        }
-//    }
-//};
-
 /** Entry point to application.
  * @param argc number of command line arguments
  * @param argv array of command line arguments

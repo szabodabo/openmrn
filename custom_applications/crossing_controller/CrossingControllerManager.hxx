@@ -166,6 +166,12 @@ public:
 	void handle_event_report(const EventRegistryEntry& entry,
 			EventReport* event, BarrierNotifiable* done) override {
 		AutoNotify an(done);
+		if (is_activation_event(entry.event)) {
+			// send active event
+			// - start crossbucks flashing
+			// - enable sound
+			// - kick off servo rotation
+		}
 	}
 
 private:
