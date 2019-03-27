@@ -207,8 +207,6 @@ public:
 			return;
 		}
 
-		if (entry.event < 5) { DIE("to0 small"); }
-
 		if (is_activation_event(entry.event)) {
 			envelope->event_write_helper<1>()->WriteAsync(node_,
 					openlcb::Defs::MTI_CONSUMER_IDENTIFIED_UNKNOWN,
