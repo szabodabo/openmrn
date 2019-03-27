@@ -12,11 +12,9 @@ namespace crossing_controller {
 class CrossingManager: private DefaultConfigUpdateListener,
 		private openlcb::SimpleEventHandler {
 public:
-	static const bool CROSSING_ACTIVE = false;
-
-	CrossingManager(const openlcb::ConfigDef config, openlcb::Node* node) :
-			config_(config), node_(node) {
-
+	CrossingManager(const openlcb::ConfigDef config, openlcb::Node* node,
+			const Gpio* snd_enable) :
+			config_(config), node_(node), snd_enable_(snd_enable) {
 	}
 
 	virtual UpdateAction apply_configuration(int fd, bool initial_load,
@@ -88,7 +86,8 @@ public:
 		// crossing_post_activated_event
 		// crossing_post_deactivated_event
 
-		config_.userinfo().name().write(fd, openlcb::SNIP_STATIC_DATA.model_name);
+		config_.userinfo().name().write(fd,
+				openlcb::SNIP_STATIC_DATA.model_name);
 		config_.userinfo().description().write(fd,
 				"The best darn Grade Crossing controller money can't buy!");
 
@@ -146,7 +145,7 @@ public:
 					openlcb::eventid_to_buffer(entry.event), done->new_child());
 		} else if (entry.event == crossing_active_event_) {
 			openlcb::Defs::MTI mti =
-					CROSSING_ACTIVE ?
+					crossing_active_ ?
 							openlcb::Defs::MTI_CONSUMER_IDENTIFIED_VALID :
 							openlcb::Defs::MTI_CONSUMER_IDENTIFIED_INVALID;
 			envelope->event_write_helper<2>()->WriteAsync(node_, mti,
@@ -154,7 +153,7 @@ public:
 					openlcb::eventid_to_buffer(entry.event), done->new_child());
 		} else if (entry.event == crossing_dormant_event_) {
 			openlcb::Defs::MTI mti =
-					CROSSING_ACTIVE ?
+					crossing_active_ ?
 							openlcb::Defs::MTI_CONSUMER_IDENTIFIED_INVALID :
 							openlcb::Defs::MTI_CONSUMER_IDENTIFIED_VALID;
 			envelope->event_write_helper<3>()->WriteAsync(node_, mti,
@@ -164,12 +163,17 @@ public:
 	}
 
 	void handle_event_report(const EventRegistryEntry& entry,
-			EventReport* event, BarrierNotifiable* done) override {
+			EventReport* envelope, BarrierNotifiable* done) override {
 		AutoNotify an(done);
 		if (is_activation_event(entry.event)) {
-			// send active event
+			crossing_active_ = true;
+			envelope->event_write_helper<1>()->WriteAsync(node_,
+					openlcb::Defs::MTI_EVENT_REPORT,
+					openlcb::WriteHelper::global(),
+					openlcb::eventid_to_buffer(crossing_active_event_),
+					done->new_child());
+			snd_enable_->set();
 			// - start crossbucks flashing
-			// - enable sound
 			// - kick off servo rotation
 		}
 	}
@@ -198,6 +202,8 @@ private:
 	const openlcb::ConfigDef config_; // this is just the schema.
 	//int fd_ { -1 };  // config file descriptor.
 	openlcb::Node* node_;
+	const Gpio* snd_enable_;
+	bool crossing_active_ = false;
 
 };
 

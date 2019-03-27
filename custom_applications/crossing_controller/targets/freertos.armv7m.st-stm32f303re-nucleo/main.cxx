@@ -68,7 +68,10 @@ extern const char * const openlcb::SNIP_DYNAMIC_FILENAME =
 // producers to it.
 openlcb::RefreshLoop loop(stack.node(), {/*producer_sw1.polling()*/});
 
-crossing_controller::CrossingManager crossing(cfg, stack.node());
+GPIO_PIN(SndEnable, GpioOutputSafeLow, C, 10);
+static const Gpio* snd_enable_gpio = SndEnable_Pin::instance();
+
+crossing_controller::CrossingManager crossing(cfg, stack.node(), snd_enable_gpio);
 
 /** Entry point to application.
  * @param argc number of command line arguments
