@@ -64,6 +64,8 @@ static Stm32EEPROMEmulation eeprom0("/dev/eeprom", 1024);
 
 const size_t EEPROMEmulation::SECTOR_SIZE = 2048;
 
+TIM_HandleTypeDef tim1_handle;
+
 extern "C" {
 
 /** Blink LED */
@@ -89,7 +91,7 @@ void setblink(uint32_t pattern)
 
 
 /// TIM17 shares this interrupt with certain features of timer1
-void tim1_trg_com_interrupt_handler(void)
+void tim1_trg_com_tim17_interrupt_handler(void)
 {
     //
     // Clear the timer interrupt.
@@ -104,6 +106,24 @@ void tim1_trg_com_interrupt_handler(void)
     if (!rest_pattern)
     {
         rest_pattern = blinker_pattern;
+    }
+}
+
+uint16_t lamp_update_mod_counter = 0;
+
+void tim1_up_tim16_interrupt_handler(void) {
+    // handles tim1 update only (tim16 unused)
+    // called every timer period (20kHz).
+    TIM1->SR &= ~TIM_IT_UPDATE;
+
+    // over 40k updates, step from 0 to 200.
+    // 1 duty cycle step every 200 updates.
+    lamp_update_mod_counter++;
+    if (lamp_update_mod_counter >= 200) {
+        lamp_update_mod_counter = 0;
+        if (++TIM1->CCR1 >= 200) {
+            TIM1->CCR1 = 0;
+        }
     }
 }
 
@@ -195,6 +215,9 @@ void hw_preinit(void)
     __HAL_RCC_USART2_CLK_ENABLE();
     __HAL_RCC_CAN1_CLK_ENABLE();
     __HAL_RCC_TIM17_CLK_ENABLE();
+    __HAL_RCC_TIM1_CLK_ENABLE();
+    __HAL_RCC_DMA1_CLK_ENABLE();
+    __HAL_RCC_DMA2_CLK_ENABLE();
 
     /* setup pinmux */
     GPIO_InitTypeDef gpio_init;
@@ -226,6 +249,41 @@ void hw_preinit(void)
     gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
     gpio_init.Pin = GPIO_PIN_10;
     HAL_GPIO_Init(GPIOC, &gpio_init);
+
+    /**
+     * LED Crossbucks timers: PA8 (TIM1_CH1) / PA9 (TIM1_CH2)
+     * TIM1_CH1 on DMA1_CH2; TIM1_CH2 on DMA1_CH3 (from reference manual).
+     * PSC=17, ARR=199 
+     */
+    gpio_init.Mode = GPIO_MODE_AF_PP;
+    gpio_init.Pull = GPIO_NOPULL;
+    gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpio_init.Alternate = GPIO_AF6_TIM1;
+    gpio_init.Pin = GPIO_PIN_8;
+    HAL_GPIO_Init(GPIOA, &gpio_init);
+    gpio_init.Pin = GPIO_PIN_9;
+    HAL_GPIO_Init(GPIOA, &gpio_init);
+
+    memset(&tim1_handle, 0, sizeof(tim1_handle));
+    tim1_handle.Instance = TIM1;
+    tim1_handle.Init.Period = 199;  // 1 less than Number of divisions for animation
+    tim1_handle.Init.Prescaler = 17;  // ARR-1
+    tim1_handle.Init.CounterMode = TIM_COUNTERMODE_UP;
+    tim1_handle.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+
+    tim1_handle.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    HASSERT(HAL_TIM_PWM_Init(&tim1_handle) == HAL_OK);
+
+    TIM_OC_InitTypeDef tim1_OCInit;
+    memset(&tim1_OCInit, 0, sizeof(tim1_OCInit));
+    tim1_OCInit.OCMode = TIM_OCMODE_PWM1;  // on for X counts, then off.
+    tim1_OCInit.Pulse = 80;  // unused
+    tim1_OCInit.OCPolarity = TIM_OCPOLARITY_HIGH;
+    tim1_OCInit.OCFastMode = TIM_OCFAST_DISABLE;
+    HASSERT(HAL_TIM_PWM_ConfigChannel(&tim1_handle, &tim1_OCInit, TIM_CHANNEL_1) == HAL_OK);
+
+    NVIC_SetPriority(TIM1_UP_TIM16_IRQn, 0xF0);
+    NVIC_EnableIRQ(TIM1_UP_TIM16_IRQn);
 
     GpioInit::hw_init();
 

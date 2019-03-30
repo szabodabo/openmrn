@@ -174,6 +174,8 @@ public:
 					done->new_child());
 			snd_enable_->set();
 			// - start crossbucks flashing
+			//PA8 / PA9: TIM1_CH1, TIM1_CH2 on F303RE. TIM1 is advanced timer.
+
 			// - kick off servo rotation
 		}
 	}

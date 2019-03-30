@@ -1,5 +1,3 @@
-
-
 #include "nmranet_config.h"
 #include "os/os.h"
 
@@ -71,7 +69,8 @@ openlcb::RefreshLoop loop(stack.node(), {/*producer_sw1.polling()*/});
 GPIO_PIN(SndEnable, GpioOutputSafeLow, C, 10);
 static const Gpio* snd_enable_gpio = SndEnable_Pin::instance();
 
-crossing_controller::CrossingManager crossing(cfg, stack.node(), snd_enable_gpio);
+crossing_controller::CrossingManager crossing(cfg, stack.node(),
+		snd_enable_gpio);
 
 /** Entry point to application.
  * @param argc number of command line arguments
@@ -101,8 +100,11 @@ int appl_main(int argc, char *argv[]) {
 	stack.add_gridconnect_port("/dev/ser0");
 #endif
 
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);
+	// TODO: figure out why calling HAL_TIM_PWM_Enable_IT fails FreeRTOS assert.
+	 __HAL_TIM_ENABLE_IT(&tim1_handle, TIM_IT_UPDATE);
+	 __HAL_TIM_ENABLE(&tim1_handle);
+	 TIM_CCxChannelCmd(tim1_handle.Instance, TIM_CHANNEL_1, TIM_CCx_ENABLE);
+	 __HAL_TIM_MOE_ENABLE(&tim1_handle);
 
 	// This command donates the main thread to the operation of the
 	// stack. Alternatively the stack could be started in a separate stack and

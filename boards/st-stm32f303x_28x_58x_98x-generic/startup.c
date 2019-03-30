@@ -77,9 +77,9 @@ extern void usb_lp_can1_rx0_interrupt_handler(void);
 extern void can1_rx1_interrupt_handler(void);
 extern void can1_sce_interrupt_handler(void);
 extern void exti9_5_interrupt_handler(void);
-extern void tim1_brk_interrupt_handler(void);
-extern void tim1_up_interrupt_handler(void);
-extern void tim1_trg_com_interrupt_handler(void);
+extern void tim1_brk_tim15_interrupt_handler(void);
+extern void tim1_up_tim16_interrupt_handler(void);
+extern void tim1_trg_com_tim17_interrupt_handler(void);
 extern void tim1_cc_interrupt_handler(void);
 extern void tim2_interrupt_handler(void);
 extern void tim3_interrupt_handler(void);
@@ -175,12 +175,12 @@ void ( *const __interrupt_vector[])(void) =
     usb_hp_can1_tx_interrupt_handler,  /**< 35 */
     usb_lp_can1_rx0_interrupt_handler, /**< 36 */
     can1_rx1_interrupt_handler,        /**< 37 */
-    can1_sce_interrupt_handler,        /**< 38 */
-    exti9_5_interrupt_handler,         /**< 39 */
-    tim1_brk_interrupt_handler,        /**< 40 */
-    tim1_up_interrupt_handler,         /**< 41 */
-    tim1_trg_com_interrupt_handler,    /**< 42 */
-    tim1_cc_interrupt_handler,         /**< 43 */
+    can1_sce_interrupt_handler,        /**< 38 CAN_SCE interrupt */
+    exti9_5_interrupt_handler,         /**< 39 EXTI Line[9:5] interrupts */
+    tim1_brk_tim15_interrupt_handler,        /**< 40 TIM1 Break/TIM15 global interrupts */
+    tim1_up_tim16_interrupt_handler,         /**< 41 TIM1 Update/TIM16 global */
+    tim1_trg_com_tim17_interrupt_handler,    /**< 42 TIM1 trigger and commutation/TIM17 */
+    tim1_cc_interrupt_handler,         /**< 43 TIM1 capture compare interrupt */
     tim2_interrupt_handler,            /**< 44 */
     tim3_interrupt_handler,            /**< 45 */
     tim4_interrupt_handler,            /**< 46 */
@@ -522,11 +522,11 @@ void can1_sce_interrupt_handler(void)
     __attribute__((weak, alias("default_interrupt_handler")));
 void exti9_5_interrupt_handler(void)
     __attribute__((weak, alias("default_interrupt_handler")));
-void tim1_brk_interrupt_handler(void)
+void tim1_brk_tim15_interrupt_handler(void)
     __attribute__((weak, alias("default_interrupt_handler")));
-void tim1_up_interrupt_handler(void)
+void tim1_up_tim16_interrupt_handler(void)
     __attribute__((weak, alias("default_interrupt_handler")));
-void tim1_trg_com_interrupt_handler(void)
+void tim1_trg_com_tim17_interrupt_handler(void)
     __attribute__((weak, alias("default_interrupt_handler")));
 void tim1_cc_interrupt_handler(void)
     __attribute__((weak, alias("default_interrupt_handler")));
