@@ -13,8 +13,8 @@ class CrossingManager: private DefaultConfigUpdateListener,
 		private openlcb::SimpleEventHandler {
 public:
 	CrossingManager(const openlcb::ConfigDef config, openlcb::Node* node,
-			const Gpio* snd_enable) :
-			config_(config), node_(node), snd_enable_(snd_enable) {
+			const Gpio* snd_enable, std::function<void()> enable_lamps, std::function<void()> disable_lamps) :
+			config_(config), node_(node), snd_enable_(snd_enable), enable_lamps_(enable_lamps), disable_lamps_(disable_lamps) {
 	}
 
 	virtual UpdateAction apply_configuration(int fd, bool initial_load,
@@ -173,8 +173,7 @@ public:
 					openlcb::eventid_to_buffer(crossing_active_event_),
 					done->new_child());
 			snd_enable_->set();
-			// - start crossbucks flashing
-			//PA8 / PA9: TIM1_CH1, TIM1_CH2 on F303RE. TIM1 is advanced timer.
+			enable_lamps_();
 
 			// - kick off servo rotation
 		}
@@ -206,7 +205,7 @@ private:
 	openlcb::Node* node_;
 	const Gpio* snd_enable_;
 	bool crossing_active_ = false;
-
+	std::function<void()> enable_lamps_, disable_lamps_;
 };
 
 }  // namespace crossing_controller

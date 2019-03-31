@@ -59,6 +59,8 @@ static_assert(openlcb::CONFIG_FILE_SIZE <= 600, "Need to adjust eeprom size");
 extern const char * const openlcb::SNIP_DYNAMIC_FILENAME =
 		openlcb::CONFIG_FILENAME;
 
+bool CROSSING_ACTIVE = false;
+
 // TODO: Attach CDI config schema to hardware things.
 
 // The producers need to be polled repeatedly for changes and to execute the
@@ -69,8 +71,24 @@ openlcb::RefreshLoop loop(stack.node(), {/*producer_sw1.polling()*/});
 GPIO_PIN(SndEnable, GpioOutputSafeLow, C, 10);
 static const Gpio* snd_enable_gpio = SndEnable_Pin::instance();
 
+void EnableCBLampTimer() {
+	__HAL_TIM_ENABLE_IT(&tim1_handle, TIM_IT_UPDATE);
+	 __HAL_TIM_ENABLE(&tim1_handle);
+	 TIM_CCxChannelCmd(tim1_handle.Instance, TIM_CHANNEL_1, TIM_CCx_ENABLE);
+	 TIM_CCxChannelCmd(tim1_handle.Instance, TIM_CHANNEL_2, TIM_CCx_ENABLE);
+	 __HAL_TIM_MOE_ENABLE(&tim1_handle);
+}
+
+void DisableCBLampTimer() {
+	__HAL_TIM_DISABLE_IT(&tim1_handle, TIM_IT_UPDATE);
+	 __HAL_TIM_DISABLE(&tim1_handle);
+	 TIM_CCxChannelCmd(tim1_handle.Instance, TIM_CHANNEL_1, TIM_CCx_DISABLE);
+	 TIM_CCxChannelCmd(tim1_handle.Instance, TIM_CHANNEL_2, TIM_CCx_DISABLE);
+	 __HAL_TIM_MOE_DISABLE(&tim1_handle);
+}
+
 crossing_controller::CrossingManager crossing(cfg, stack.node(),
-		snd_enable_gpio);
+		snd_enable_gpio, []{ CROSSING_ACTIVE = true; }, []{CROSSING_ACTIVE = false; });
 
 /** Entry point to application.
  * @param argc number of command line arguments
@@ -101,10 +119,10 @@ int appl_main(int argc, char *argv[]) {
 #endif
 
 	// TODO: figure out why calling HAL_TIM_PWM_Enable_IT fails FreeRTOS assert.
-	 __HAL_TIM_ENABLE_IT(&tim1_handle, TIM_IT_UPDATE);
-	 __HAL_TIM_ENABLE(&tim1_handle);
-	 TIM_CCxChannelCmd(tim1_handle.Instance, TIM_CHANNEL_1, TIM_CCx_ENABLE);
-	 __HAL_TIM_MOE_ENABLE(&tim1_handle);
+	// TODO: looks like LED is on even when fet gate is 0 :[!
+	//       but only for one fet channel... could be bad hardware.
+	EnableCBLampTimer();
+	 
 
 	// This command donates the main thread to the operation of the
 	// stack. Alternatively the stack could be started in a separate stack and

@@ -109,21 +109,42 @@ void tim1_trg_com_tim17_interrupt_handler(void)
     }
 }
 
-uint16_t lamp_update_mod_counter = 0;
+uint16_t LAMP_UPDATE_COUNTER = 0;
+#define TIM1_UPDATES_PER_SEC 20000
+
+#define FADE_ON_TICKS 0.3 * TIM1_UPDATES_PER_SEC
+#define FADE_OFF_TICKS 0.6 * TIM1_UPDATES_PER_SEC
+#define LAMP_CYCLE_TOTAL_LEN_TICKS 1.2 * TIM1_UPDATES_PER_SEC
+#define LAMP_NUM_BUCKETS 200
 
 void tim1_up_tim16_interrupt_handler(void) {
     // handles tim1 update only (tim16 unused)
     // called every timer period (20kHz).
     TIM1->SR &= ~TIM_IT_UPDATE;
 
-    // over 40k updates, step from 0 to 200.
-    // 1 duty cycle step every 200 updates.
-    lamp_update_mod_counter++;
-    if (lamp_update_mod_counter >= 200) {
-        lamp_update_mod_counter = 0;
-        if (++TIM1->CCR1 >= 200) {
-            TIM1->CCR1 = 0;
-        }
+    if (!CROSSING_ACTIVE) {
+        TIM1->CCR1 = 0;
+        TIM1->CCR2 = 0;
+        LAMP_UPDATE_COUNTER = 0;
+        return;
+    }
+
+    if (++LAMP_UPDATE_COUNTER > LAMP_CYCLE_TOTAL_LEN_TICKS) {
+        LAMP_UPDATE_COUNTER = 0;
+    }
+
+    // lamp update counter cycles betweeh LAMP1 and LAMP2.
+    // first half: lamp1 is turning on, lamp2 begins turning off.
+    // second half: lamp2 begins turning on, lamp1 begins turning off.
+    const uint32_t progress_ticks = LAMP_CYCLE_TOTAL_LEN_TICKS - LAMP_UPDATE_COUNTER;
+    if (progress_ticks < LAMP_CYCLE_TOTAL_LEN_TICKS/2) {
+        // turning lamp1 on, turning lamp2 off
+        TIM1->CCR1 = LAMP_NUM_BUCKETS;
+        TIM1->CCR2 = 0;
+    } else {
+        // turning lamp1 off, turning lamp2 on
+        TIM1->CCR1 = 0;
+        TIM1->CCR2 = LAMP_NUM_BUCKETS;
     }
 }
 
@@ -266,7 +287,7 @@ void hw_preinit(void)
 
     memset(&tim1_handle, 0, sizeof(tim1_handle));
     tim1_handle.Instance = TIM1;
-    tim1_handle.Init.Period = 199;  // 1 less than Number of divisions for animation
+    tim1_handle.Init.Period = LAMP_NUM_BUCKETS-1;  // 1 less than Number of divisions for animation
     tim1_handle.Init.Prescaler = 17;  // ARR-1
     tim1_handle.Init.CounterMode = TIM_COUNTERMODE_UP;
     tim1_handle.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -277,10 +298,11 @@ void hw_preinit(void)
     TIM_OC_InitTypeDef tim1_OCInit;
     memset(&tim1_OCInit, 0, sizeof(tim1_OCInit));
     tim1_OCInit.OCMode = TIM_OCMODE_PWM1;  // on for X counts, then off.
-    tim1_OCInit.Pulse = 80;  // unused
+    tim1_OCInit.Pulse = 0;
     tim1_OCInit.OCPolarity = TIM_OCPOLARITY_HIGH;
     tim1_OCInit.OCFastMode = TIM_OCFAST_DISABLE;
     HASSERT(HAL_TIM_PWM_ConfigChannel(&tim1_handle, &tim1_OCInit, TIM_CHANNEL_1) == HAL_OK);
+    HASSERT(HAL_TIM_PWM_ConfigChannel(&tim1_handle, &tim1_OCInit, TIM_CHANNEL_2) == HAL_OK);
 
     NVIC_SetPriority(TIM1_UP_TIM16_IRQn, 0xF0);
     NVIC_EnableIRQ(TIM1_UP_TIM16_IRQn);

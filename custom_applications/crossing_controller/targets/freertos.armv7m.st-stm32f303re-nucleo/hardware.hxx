@@ -18,3 +18,4 @@ typedef LED_GREEN_RAW_Pin BLINKER_RAW_Pin;
 typedef BLINKER_Pin LED_GREEN_Pin;
 
 extern TIM_HandleTypeDef tim1_handle;
+extern bool CROSSING_ACTIVE;
