@@ -88,7 +88,7 @@ void DisableCBLampTimer() {
 }
 
 crossing_controller::CrossingManager crossing(cfg, stack.node(),
-		snd_enable_gpio, []{ CROSSING_ACTIVE = true; }, []{CROSSING_ACTIVE = false; });
+	snd_enable_gpio, &CROSSING_ACTIVE);
 
 /** Entry point to application.
  * @param argc number of command line arguments

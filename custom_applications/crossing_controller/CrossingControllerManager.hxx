@@ -13,8 +13,9 @@ class CrossingManager: private DefaultConfigUpdateListener,
 		private openlcb::SimpleEventHandler {
 public:
 	CrossingManager(const openlcb::ConfigDef config, openlcb::Node* node,
-			const Gpio* snd_enable, std::function<void()> enable_lamps, std::function<void()> disable_lamps) :
-			config_(config), node_(node), snd_enable_(snd_enable), enable_lamps_(enable_lamps), disable_lamps_(disable_lamps) {
+			const Gpio* snd_enable, bool* crossing_active) :
+			config_(config), node_(node), snd_enable_(snd_enable), 
+			crossing_active_(crossing_active) {
 	}
 
 	virtual UpdateAction apply_configuration(int fd, bool initial_load,
@@ -145,7 +146,7 @@ public:
 					openlcb::eventid_to_buffer(entry.event), done->new_child());
 		} else if (entry.event == crossing_active_event_) {
 			openlcb::Defs::MTI mti =
-					crossing_active_ ?
+					*crossing_active_ ?
 							openlcb::Defs::MTI_CONSUMER_IDENTIFIED_VALID :
 							openlcb::Defs::MTI_CONSUMER_IDENTIFIED_INVALID;
 			envelope->event_write_helper<2>()->WriteAsync(node_, mti,
@@ -153,7 +154,7 @@ public:
 					openlcb::eventid_to_buffer(entry.event), done->new_child());
 		} else if (entry.event == crossing_dormant_event_) {
 			openlcb::Defs::MTI mti =
-					crossing_active_ ?
+					*crossing_active_ ?
 							openlcb::Defs::MTI_CONSUMER_IDENTIFIED_INVALID :
 							openlcb::Defs::MTI_CONSUMER_IDENTIFIED_VALID;
 			envelope->event_write_helper<3>()->WriteAsync(node_, mti,
@@ -166,14 +167,13 @@ public:
 			EventReport* envelope, BarrierNotifiable* done) override {
 		AutoNotify an(done);
 		if (is_activation_event(entry.event)) {
-			crossing_active_ = true;
+			*crossing_active_ = true;
 			envelope->event_write_helper<1>()->WriteAsync(node_,
 					openlcb::Defs::MTI_EVENT_REPORT,
 					openlcb::WriteHelper::global(),
 					openlcb::eventid_to_buffer(crossing_active_event_),
 					done->new_child());
 			snd_enable_->set();
-			enable_lamps_();
 
 			// - kick off servo rotation
 		}
@@ -204,8 +204,7 @@ private:
 	//int fd_ { -1 };  // config file descriptor.
 	openlcb::Node* node_;
 	const Gpio* snd_enable_;
-	bool crossing_active_ = false;
-	std::function<void()> enable_lamps_, disable_lamps_;
+	bool* crossing_active_;
 };
 
 }  // namespace crossing_controller

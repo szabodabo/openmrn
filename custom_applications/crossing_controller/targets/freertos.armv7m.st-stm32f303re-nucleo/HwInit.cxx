@@ -148,6 +148,49 @@ void tim1_up_tim16_interrupt_handler(void) {
     }
 }
 
+#define TIM3_UPDATES_PER_SEC 50
+#define TIM3_SERVO_NUM_BUCKETS 999
+#define TIM3_SERVO_BUCKETS_PER_MS (TIM3_SERVO_NUM_BUCKETS / 20)  // 50Hz freq = 20ms period
+#define TIM3_SERVO_MIN_DUTY (TIM3_SERVO_BUCKETS_PER_MS * 0.5)
+#define TIM3_SERVO_MAX_DUTY (TIM3_SERVO_BUCKETS_PER_MS * 2.5)
+
+uint32_t tim3_update_count = 0;
+
+void tim3_interrupt_handler(void) {
+    TIM3->SR &= ~TIM_IT_UPDATE;
+
+    if (!CROSSING_ACTIVE) {
+        tim3_update_count = 0;
+        return;
+    }
+
+    if (++tim3_update_count > TIM3_UPDATES_PER_SEC) {
+        tim3_update_count = 0;
+    }
+
+    if (tim3_update_count > (TIM3_UPDATES_PER_SEC / 2)) {
+        TIM3->CCR1 = TIM3_SERVO_MAX_DUTY;
+        TIM3->CCR2 = TIM3_SERVO_MAX_DUTY;
+        TIM3->CCR3 = TIM3_SERVO_MAX_DUTY;
+        TIM3->CCR4 = TIM3_SERVO_MAX_DUTY;
+    } else {
+        TIM3->CCR1 = TIM3_SERVO_MIN_DUTY;
+        TIM3->CCR2 = TIM3_SERVO_MIN_DUTY;
+        TIM3->CCR3 = TIM3_SERVO_MIN_DUTY;
+        TIM3->CCR4 = TIM3_SERVO_MIN_DUTY;
+    }
+}
+
+void EnableServoTimer(TIM_HandleTypeDef* tim) {
+    __HAL_TIM_ENABLE_IT(tim, TIM_IT_UPDATE);
+    __HAL_TIM_ENABLE(tim);
+    TIM_CCxChannelCmd(tim->Instance, TIM_CHANNEL_1, TIM_CCx_ENABLE);
+    TIM_CCxChannelCmd(tim->Instance, TIM_CHANNEL_2, TIM_CCx_ENABLE);
+    TIM_CCxChannelCmd(tim->Instance, TIM_CHANNEL_3, TIM_CCx_ENABLE);
+    TIM_CCxChannelCmd(tim->Instance, TIM_CHANNEL_4, TIM_CCx_ENABLE);
+    __HAL_TIM_MOE_ENABLE(tim);
+}
+
 void diewith(uint32_t pattern)
 {
     // vPortClearInterruptMask(0x20);
@@ -237,6 +280,7 @@ void hw_preinit(void)
     __HAL_RCC_CAN1_CLK_ENABLE();
     __HAL_RCC_TIM17_CLK_ENABLE();
     __HAL_RCC_TIM1_CLK_ENABLE();
+    __HAL_RCC_TIM3_CLK_ENABLE();
     __HAL_RCC_DMA1_CLK_ENABLE();
     __HAL_RCC_DMA2_CLK_ENABLE();
 
@@ -306,6 +350,51 @@ void hw_preinit(void)
 
     NVIC_SetPriority(TIM1_UP_TIM16_IRQn, 0xF0);
     NVIC_EnableIRQ(TIM1_UP_TIM16_IRQn);
+
+    /**
+    * Set up servo timers.
+    * TIM3 is a simple timer; TIM8 advanced.
+    * For fun, let's use TIM3 here (since we already have adv. timer TIM1).
+    * SRV_1: PC6, TIM3_CH1, TIM8_CH1 [TIM3: AF2]
+    * SRV_2: PC8 TIM3_CH3, TIM8_CH3
+    * SRV_3: PC7 TIM3_CH2, TIM8_CH2
+    * SRV_4: PC9 TIM3_CH4, TIM8_CH4
+    *
+    * Target frequency: 50Hz
+    * PSC: 1439; ARR: 999
+    */
+    gpio_init.Mode = GPIO_MODE_AF_PP;
+    gpio_init.Pull = GPIO_NOPULL;
+    gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpio_init.Alternate = GPIO_AF2_TIM3;
+    for (const auto pin : { GPIO_PIN_6, GPIO_PIN_7, GPIO_PIN_8, GPIO_PIN_9 }) {
+        gpio_init.Pin = pin;
+        HAL_GPIO_Init(GPIOC, &gpio_init);
+    }
+
+    TIM_HandleTypeDef tim3;
+    memset(&tim3, 0, sizeof(tim3));
+    tim3.Instance = TIM3;
+    tim3.Init.Prescaler = 1438;  // ARR-1
+    tim3.Init.Period = TIM3_SERVO_NUM_BUCKETS - 1; // 1 less than Number of divisions for animation
+    tim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+    tim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    tim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    HASSERT(HAL_TIM_PWM_Init(&tim3) == HAL_OK);
+
+    TIM_OC_InitTypeDef tim3_OCInit;
+    memset(&tim3_OCInit, 0, sizeof(tim3_OCInit));
+    tim3_OCInit.OCMode = TIM_OCMODE_PWM1;  // on for X counts, then off.
+    tim3_OCInit.Pulse = 20;
+    tim3_OCInit.OCPolarity = TIM_OCPOLARITY_HIGH;
+    tim3_OCInit.OCFastMode = TIM_OCFAST_DISABLE;
+    for (const auto channel : { TIM_CHANNEL_1, TIM_CHANNEL_2, TIM_CHANNEL_3, TIM_CHANNEL_4 }) {
+        HASSERT(HAL_TIM_PWM_ConfigChannel(&tim3, &tim3_OCInit, channel) == HAL_OK);
+    }
+
+    NVIC_SetPriority(TIM3_IRQn, 0xE0);
+    NVIC_EnableIRQ(TIM3_IRQn);
+    EnableServoTimer(&tim3);
 
     GpioInit::hw_init();
 
