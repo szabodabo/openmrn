@@ -180,6 +180,9 @@ public:
 			// TODO: This should be the other way around
 			// (event published after crossing is done).
 			// Do it this way for debug during development.
+
+			// TODO: Need a higher-level workflow for disabling:
+			//       Lights should only go off when gates are fully up.
 			*crossing_active_ = false;
 			snd_enable_->clr();
 		}
