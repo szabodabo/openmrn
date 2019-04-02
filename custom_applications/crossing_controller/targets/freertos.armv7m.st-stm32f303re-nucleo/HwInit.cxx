@@ -157,11 +157,6 @@ void tim1_up_tim16_interrupt_handler(void) {
 
 uint32_t tim3_update_count = 0;
 
-enum class TargetServoState {
-    MAXIMUM = 1,
-    MINIMUM = 2,
-};
-
 void setduty(int32_t duty) {
     TIM3->CCR1 = duty;
     TIM3->CCR2 = duty;
@@ -178,6 +173,8 @@ int32_t animation_progress(int32_t from_value, int32_t to_value,
             / (from_weight + to_weight);
 }
 
+// TODO: is there a way to not depend on from_value?
+//       could we read the current value and chart a course?
 class AnimationCounter {
 public:
     AnimationCounter(int32_t from_value, int32_t to_value,
