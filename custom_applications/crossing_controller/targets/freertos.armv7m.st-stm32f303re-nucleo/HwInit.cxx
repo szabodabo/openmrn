@@ -65,6 +65,7 @@ static Stm32EEPROMEmulation eeprom0("/dev/eeprom", 1024);
 const size_t EEPROMEmulation::SECTOR_SIZE = 2048;
 
 TIM_HandleTypeDef tim1_handle;
+ADC_HandleTypeDef adc1_handle;
 
 extern "C" {
 
@@ -238,6 +239,23 @@ void EnableServoTimer(TIM_HandleTypeDef* tim) {
     __HAL_TIM_MOE_ENABLE(tim);
 }
 
+void adc1_2_interrupt_handler(void) {
+	HAL_ADC_IRQHandler(&adc1_handle);
+}
+
+uint32_t ADC_VALUE;
+int adc_count = 0;
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* adc) {
+	ADC_VALUE = HAL_ADC_GetValue(adc);
+    ++adc_count;
+}
+
+//
+//void adc3_interrupt_handler(void) {
+//	HAL_ADC_IRQHandler()
+//}
+
 void diewith(uint32_t pattern)
 {
     // vPortClearInterruptMask(0x20);
@@ -330,6 +348,9 @@ void hw_preinit(void)
     __HAL_RCC_TIM3_CLK_ENABLE();
     __HAL_RCC_DMA1_CLK_ENABLE();
     __HAL_RCC_DMA2_CLK_ENABLE();
+    __HAL_RCC_ADC1_CLK_ENABLE();
+    __HAL_RCC_ADC2_CLK_ENABLE();
+    __HAL_RCC_ADC34_CLK_ENABLE();
 
     /* setup pinmux */
     GPIO_InitTypeDef gpio_init;
@@ -455,6 +476,32 @@ void hw_preinit(void)
      * DET7: PA2 ADC1_IN3  (fast)
      * DET8: PA3 ADC1_IN4  (fast)
      */
+    adc1_handle.Instance = ADC1;
+    adc1_handle.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+    adc1_handle.Init.Resolution = ADC_RESOLUTION_12B;
+    adc1_handle.Init.ScanConvMode = DISABLE;
+    adc1_handle.Init.ContinuousConvMode = ENABLE;
+    adc1_handle.Init.DiscontinuousConvMode = DISABLE;
+    adc1_handle.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+    adc1_handle.Init.NbrOfConversion = 1;
+    adc1_handle.Init.DMAContinuousRequests = DISABLE;
+    adc1_handle.Init.EOCSelection = ADC_EOC_SEQ_CONV;
+    adc1_handle.Init.LowPowerAutoWait = DISABLE;
+    adc1_handle.Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
+    HASSERT(HAL_ADC_Init(&adc1_handle) == HAL_OK);
+    
+    ADC_ChannelConfTypeDef adc_channel;
+    adc_channel.Rank = 1;
+    adc_channel.SingleDiff = ADC_SINGLE_ENDED;
+    adc_channel.SamplingTime = ADC_SAMPLETIME_601CYCLES_5;
+    adc_channel.OffsetNumber = ADC_OFFSET_NONE;
+    adc_channel.Offset = 0;
+    adc_channel.Channel = ADC_CHANNEL_1;
+    HASSERT(HAL_ADC_ConfigChannel(&adc1_handle, &adc_channel) == HAL_OK);
+    HAL_ADCEx_Calibration_Start(&adc1_handle, ADC_SINGLE_ENDED);
+    NVIC_SetPriority(ADC1_2_IRQn, 0);
+    NVIC_EnableIRQ(ADC1_2_IRQn);
+    HAL_ADC_Start_IT(&adc1_handle);
 
     GpioInit::hw_init();
 
