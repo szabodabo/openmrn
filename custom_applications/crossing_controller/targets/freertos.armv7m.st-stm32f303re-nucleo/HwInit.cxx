@@ -443,6 +443,19 @@ void hw_preinit(void)
     NVIC_EnableIRQ(TIM3_IRQn);
     EnableServoTimer(&tim3);
 
+    /**
+     * Light detectors (phototransistors).
+     * 
+     * DET1: PA0 ADC1_IN1  (fast)
+     * DET2: PA1 ADC1_IN2  (fast)
+     * DET3: PA4 ADC2_IN1  (fast)
+     * DET4: PB0 ADC3_IN12
+     * DET5: PA6 ADC2_IN3  (fast)
+     * DET6: PA7 ADC2_IN4  (fast)
+     * DET7: PA2 ADC1_IN3  (fast)
+     * DET8: PA3 ADC1_IN4  (fast)
+     */
+
     GpioInit::hw_init();
 
     /* Initializes the blinker timer. */
