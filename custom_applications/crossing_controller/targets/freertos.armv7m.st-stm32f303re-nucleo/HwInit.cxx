@@ -151,34 +151,84 @@ void tim1_up_tim16_interrupt_handler(void) {
 #define TIM3_UPDATES_PER_SEC 50
 #define TIM3_SERVO_NUM_BUCKETS 999
 #define TIM3_SERVO_BUCKETS_PER_MS (TIM3_SERVO_NUM_BUCKETS / 20)  // 50Hz freq = 20ms period
-#define TIM3_SERVO_MIN_DUTY (TIM3_SERVO_BUCKETS_PER_MS * 0.5)
-#define TIM3_SERVO_MAX_DUTY (TIM3_SERVO_BUCKETS_PER_MS * 2.5)
+#define TIM3_SERVO_MIN_DUTY (TIM3_SERVO_BUCKETS_PER_MS * 1)
+#define TIM3_SERVO_MAX_DUTY (TIM3_SERVO_BUCKETS_PER_MS * 2)
+#define SERVO_ANIMATION_LEN_TICKS (TIM3_UPDATES_PER_SEC * 12)
 
 uint32_t tim3_update_count = 0;
+
+enum class TargetServoState {
+    MAXIMUM = 1,
+    MINIMUM = 2,
+};
+
+void setduty(int32_t duty) {
+    TIM3->CCR1 = duty;
+    TIM3->CCR2 = duty;
+    TIM3->CCR3 = duty;
+    TIM3->CCR4 = duty;
+}
+
+int32_t animation_progress(int32_t from_value, int32_t to_value,
+                           int32_t progress_ticks, int32_t animation_len_ticks) {
+    progress_ticks = std::min(progress_ticks, animation_len_ticks);
+    const int32_t from_weight = (animation_len_ticks - progress_ticks);
+    const int32_t to_weight = progress_ticks;
+    return ((from_value * from_weight) + (to_value * to_weight))
+            / (from_weight + to_weight);
+}
+
+class AnimationCounter {
+public:
+    AnimationCounter(int32_t from_value, int32_t to_value,
+                     int32_t animation_len_ticks) :
+        from_value_(from_value), to_value_(to_value),
+        animation_len_ticks_(animation_len_ticks),
+        progress_ticks_(0) {
+            HASSERT(animation_len_ticks > 0);
+        }
+
+    void Tick() {
+        if (progress_ticks_ < animation_len_ticks_) {
+            progress_ticks_++;
+        }
+    }
+
+    int32_t Value() {
+        return animation_progress(from_value_, to_value_,
+            progress_ticks_, animation_len_ticks_);
+    }
+
+    bool Done() {
+        return progress_ticks_ >= animation_len_ticks_;
+    }
+
+private:
+    int32_t from_value_;
+    int32_t to_value_;
+    int32_t animation_len_ticks_;
+    int32_t progress_ticks_;
+};
+
+bool animation_on_scheduled = false;
+bool animation_off_scheduled = false;
+AnimationCounter tim3_servo_animation(TIM3_SERVO_MIN_DUTY, TIM3_SERVO_MIN_DUTY, 1);
 
 void tim3_interrupt_handler(void) {
     TIM3->SR &= ~TIM_IT_UPDATE;
 
-    if (!CROSSING_ACTIVE) {
-        tim3_update_count = 0;
-        return;
+    if (CROSSING_ACTIVE && !animation_on_scheduled) {
+        tim3_servo_animation = AnimationCounter(TIM3->CCR1, TIM3_SERVO_MAX_DUTY, SERVO_ANIMATION_LEN_TICKS);
+        animation_on_scheduled = true;
+        animation_off_scheduled = false;
+    } else if (!CROSSING_ACTIVE && !animation_off_scheduled) {
+        tim3_servo_animation = AnimationCounter(TIM3->CCR1, TIM3_SERVO_MIN_DUTY, SERVO_ANIMATION_LEN_TICKS);
+        animation_off_scheduled = true;
+        animation_on_scheduled = false;
     }
 
-    if (++tim3_update_count > TIM3_UPDATES_PER_SEC) {
-        tim3_update_count = 0;
-    }
-
-    if (tim3_update_count > (TIM3_UPDATES_PER_SEC / 2)) {
-        TIM3->CCR1 = TIM3_SERVO_MAX_DUTY;
-        TIM3->CCR2 = TIM3_SERVO_MAX_DUTY;
-        TIM3->CCR3 = TIM3_SERVO_MAX_DUTY;
-        TIM3->CCR4 = TIM3_SERVO_MAX_DUTY;
-    } else {
-        TIM3->CCR1 = TIM3_SERVO_MIN_DUTY;
-        TIM3->CCR2 = TIM3_SERVO_MIN_DUTY;
-        TIM3->CCR3 = TIM3_SERVO_MIN_DUTY;
-        TIM3->CCR4 = TIM3_SERVO_MIN_DUTY;
-    }
+    tim3_servo_animation.Tick();
+    setduty(tim3_servo_animation.Value());
 }
 
 void EnableServoTimer(TIM_HandleTypeDef* tim) {
@@ -375,7 +425,7 @@ void hw_preinit(void)
     TIM_HandleTypeDef tim3;
     memset(&tim3, 0, sizeof(tim3));
     tim3.Instance = TIM3;
-    tim3.Init.Prescaler = 1438;  // ARR-1
+    tim3.Init.Prescaler = 1438;  // PSC-1
     tim3.Init.Period = TIM3_SERVO_NUM_BUCKETS - 1; // 1 less than Number of divisions for animation
     tim3.Init.CounterMode = TIM_COUNTERMODE_UP;
     tim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -385,7 +435,7 @@ void hw_preinit(void)
     TIM_OC_InitTypeDef tim3_OCInit;
     memset(&tim3_OCInit, 0, sizeof(tim3_OCInit));
     tim3_OCInit.OCMode = TIM_OCMODE_PWM1;  // on for X counts, then off.
-    tim3_OCInit.Pulse = 20;
+    tim3_OCInit.Pulse = TIM3_SERVO_MIN_DUTY;
     tim3_OCInit.OCPolarity = TIM_OCPOLARITY_HIGH;
     tim3_OCInit.OCFastMode = TIM_OCFAST_DISABLE;
     for (const auto channel : { TIM_CHANNEL_1, TIM_CHANNEL_2, TIM_CHANNEL_3, TIM_CHANNEL_4 }) {
