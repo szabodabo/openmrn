@@ -216,6 +216,26 @@ private:
 	bool* crossing_active_;
 };
 
+
+class CrossingLightSensorManager {
+public:
+	CrossingLightSensorManager() {}
+
+	bool IsBlocked(uint8_t channel) {
+		HASSERT(channel >= 0 && channel <= 3);
+		// at least one sensor on this channel blocked.
+	}
+
+private:
+	void Measure() {
+		// measure values from ADC
+	}
+
+	// todo pointer to dma adc data
+	std::vector<int32_t> sensor_values_;
+
+};
+
 }  // namespace crossing_controller
 
 #endif /* CUSTOM_APPLICATIONS_CROSSING_CONTROLLER_CROSSINGCONTROLLERMANAGER_HXX_ */
