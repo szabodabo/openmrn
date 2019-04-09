@@ -65,7 +65,7 @@ static Stm32EEPROMEmulation eeprom0("/dev/eeprom", 1024);
 const size_t EEPROMEmulation::SECTOR_SIZE = 2048;
 
 TIM_HandleTypeDef tim1_handle;
-ADC_HandleTypeDef adc1_handle;
+ADC_HandleTypeDef adc1_handle, adc2_handle, adc3_handle;
 DMA_HandleTypeDef hdma_adc1;
 
 extern "C" {
@@ -241,7 +241,7 @@ void EnableServoTimer(TIM_HandleTypeDef* tim) {
 }
 
 void adc1_2_interrupt_handler(void) {
-	HAL_ADC_IRQHandler(&adc1_handle);
+    HAL_ADC_IRQHandler(&adc1_handle);
 }
 //
 //uint32_t ADC_VALUE;
@@ -250,14 +250,15 @@ uint16_t adcDet1278[4];
 uint16_t adcDet356[3];
 uint16_t adcDet4;
 
+// Not being called in DMA mode; not sure why.
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* adc) {
-//	ADC_VALUE = HAL_ADC_GetValue(adc);
+//  ADC_VALUE = HAL_ADC_GetValue(adc);
     ++adc_count;
 }
 
 //
 //void adc3_interrupt_handler(void) {
-//	HAL_ADC_IRQHandler()
+//  HAL_ADC_IRQHandler()
 //}
 
 void diewith(uint32_t pattern)
@@ -310,7 +311,7 @@ static void clock_setup(void)
     RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV1;
 
     HAL_RCC_OscConfig(&RCC_OscInitStruct); 
-    	
+        
     /* Select PLL as system clock source and configure the HCLK, PCLK1 and
      * PCLK2 clocks dividers
      */
@@ -479,59 +480,70 @@ void hw_preinit(void)
      * DET6: PA7 ADC2_IN4  (fast)
      * DET7: PA2 ADC1_IN3  (fast)
      * DET8: PA3 ADC1_IN4  (fast)
+     *
+     * Grouped by ADC:
+     *   ADC1: IN1=DET1, IN2=DET2, IN3=DET7, IN4=DET8
+     *   ADC2: IN1=DET3,           IN3=DET5, IN4=DET6
+     *   ADC3: IN12=DET4  <-- yes, IN12
      */
     auto adc_init_fn = [](ADC_HandleTypeDef* hadc, int num_channels) {
-    	hadc->Instance = ADC1;
-    	hadc->Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
-    	hadc->Init.Resolution = ADC_RESOLUTION_12B;
-    	hadc->Init.ScanConvMode = ENABLE;
-    	hadc->Init.ContinuousConvMode = ENABLE;
-    	hadc->Init.DiscontinuousConvMode = DISABLE;
-    	hadc->Init.DataAlign = ADC_DATAALIGN_RIGHT;
-    	hadc->Init.NbrOfConversion = 4;
-    	hadc->Init.DMAContinuousRequests = ENABLE;
-    	hadc->Init.EOCSelection = ADC_EOC_SEQ_CONV;
-    	hadc->Init.LowPowerAutoWait = DISABLE;
-    	hadc->Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
-		HASSERT(HAL_ADC_Init(hadc) == HAL_OK);
+        hadc->Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+        hadc->Init.Resolution = ADC_RESOLUTION_12B;
+        hadc->Init.ScanConvMode = ENABLE;
+        hadc->Init.ContinuousConvMode = ENABLE;
+        hadc->Init.DiscontinuousConvMode = DISABLE;
+        hadc->Init.DataAlign = ADC_DATAALIGN_RIGHT;
+        hadc->Init.NbrOfConversion = num_channels;
+        hadc->Init.DMAContinuousRequests = ENABLE;
+        hadc->Init.EOCSelection = ADC_EOC_SEQ_CONV;
+        hadc->Init.LowPowerAutoWait = DISABLE;
+        hadc->Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
+        HASSERT(HAL_ADC_Init(hadc) == HAL_OK);
     };
     
+    adc1_handle = {0};
+    adc1_handle.Instance = ADC1;
     adc_init_fn(&adc1_handle, 4);
+    adc2_handle = {0};
+    adc2_handle.Instance = ADC2;
+    adc_init_fn(&adc2_handle, 3);
+    adc3_handle = {0};
+    adc3_handle.Instance = ADC3;
+    adc_init_fn(&adc3_handle, 1);
 
-    ADC_ChannelConfTypeDef adc_channel = {0};
-    adc_channel.SingleDiff = ADC_SINGLE_ENDED;
-    adc_channel.SamplingTime = ADC_SAMPLETIME_601CYCLES_5;
+    auto adc_ch_init_fn = [](ADC_HandleTypeDef* hadc, uint32_t channel, int rank) {
+        ADC_ChannelConfTypeDef adc_channel = {0};
+        adc_channel.SingleDiff = ADC_SINGLE_ENDED;
+        adc_channel.SamplingTime = ADC_SAMPLETIME_601CYCLES_5;
+        adc_channel.Rank = rank;
+        adc_channel.Channel = channel;
+        HASSERT(HAL_ADC_ConfigChannel(hadc, &adc_channel) == HAL_OK);
+    };
 
-    adc_channel.Rank = 1;
-    adc_channel.Channel = ADC_CHANNEL_1;
-    HASSERT(HAL_ADC_ConfigChannel(&adc1_handle, &adc_channel) == HAL_OK);
-    adc_channel.Rank = 2;
-    adc_channel.Channel = ADC_CHANNEL_2;
-    HASSERT(HAL_ADC_ConfigChannel(&adc1_handle, &adc_channel) == HAL_OK);
-    adc_channel.Rank = 3;
-    adc_channel.Channel = ADC_CHANNEL_3;
-    HASSERT(HAL_ADC_ConfigChannel(&adc1_handle, &adc_channel) == HAL_OK);
-    adc_channel.Rank = 4;
-    adc_channel.Channel = ADC_CHANNEL_4;
-    HASSERT(HAL_ADC_ConfigChannel(&adc1_handle, &adc_channel) == HAL_OK);
+    adc_ch_init_fn(&adc1_handle, ADC_CHANNEL_1, 1);
+    adc_ch_init_fn(&adc1_handle, ADC_CHANNEL_2, 2);
+    adc_ch_init_fn(&adc1_handle, ADC_CHANNEL_3, 3);
+    adc_ch_init_fn(&adc1_handle, ADC_CHANNEL_4, 4);
 
-    hdma_adc1 = {0};
-    hdma_adc1.Instance = DMA1_Channel1;
-    hdma_adc1.Init.Direction = DMA_PERIPH_TO_MEMORY;
-    hdma_adc1.Init.PeriphInc = DMA_PINC_DISABLE;
-    hdma_adc1.Init.MemInc = DMA_MINC_ENABLE;
-    hdma_adc1.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
-    hdma_adc1.Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
-    hdma_adc1.Init.Mode = DMA_CIRCULAR;
-    hdma_adc1.Init.Priority = DMA_PRIORITY_LOW;
-    HASSERT(HAL_DMA_Init(&hdma_adc1) == HAL_OK);
+    auto adc_dma_init_fn = [](ADC_HandleTypeDef* hadc, DMA_Channel_TypeDef* dma_ch) {
+        DMA_HandleTypeDef hdma = {0};
+        hdma.Instance = dma_ch;
+        hdma.Init.Direction = DMA_PERIPH_TO_MEMORY;
+        hdma.Init.PeriphInc = DMA_PINC_DISABLE;
+        hdma.Init.MemInc = DMA_MINC_ENABLE;
+        hdma.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
+        hdma.Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
+        hdma.Init.Mode = DMA_CIRCULAR;
+        hdma.Init.Priority = DMA_PRIORITY_LOW;
+        HASSERT(HAL_DMA_Init(&hdma) == HAL_OK);
+        __HAL_LINKDMA(hadc, DMA_Handle, hdma);
+        HAL_ADCEx_Calibration_Start(hadc, ADC_SINGLE_ENDED);
+    };
 
-    __HAL_LINKDMA(&adc1_handle, DMA_Handle, hdma_adc1);
+    adc_dma_init_fn(&adc1_handle, DMA1_Channel1);
 
-    HAL_ADCEx_Calibration_Start(&adc1_handle, ADC_SINGLE_ENDED);
     NVIC_SetPriority(ADC1_2_IRQn, 0);
     NVIC_EnableIRQ(ADC1_2_IRQn);
-//    HAL_ADC_Start_IT(&adc1_handle);
 
     HAL_ADC_Start_DMA(&adc1_handle, (uint32_t*)adcDet1278, 4);
 
