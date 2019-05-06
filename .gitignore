@@ -78,5 +78,7 @@ openmrnpath.mk
 #Mac OS X file system artifacts
 .DS_Store
 
-# Eclipse junk
+# IDE junk
 .settings/
+.idea/
+

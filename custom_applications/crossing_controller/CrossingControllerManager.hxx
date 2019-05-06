@@ -216,10 +216,22 @@ private:
 	bool* crossing_active_;
 };
 
+class SensorDataProvider {
+public:
+	virtual uint16_t GetValue() = 0;
+};
+
+class Stm32AnalogSensorDataProvider : public SensorDataProvider {
+public:
+	uint16_t GetValue() override {
+		return 999;
+	}
+};
+
 
 class CrossingLightSensorManager {
 public:
-	CrossingLightSensorManager() {}
+	CrossingLightSensorManager(std::vector<std::pair<SensorDataProvider, SensorDataProvider>>* data_providers) : data_providers_(data_providers) {}
 
 	bool IsBlocked(uint8_t channel) {
 		HASSERT(channel >= 0 && channel <= 3);
@@ -228,9 +240,19 @@ public:
 
 private:
 	void Measure() {
-		// measure values from ADC
+		// measure values periodically. (what is the period?)
+		// sliding window, max and min at window ends.
+		// moving average of past N seconds?
+
+		// track becomes "partially blocked" (first sensor activated)
+		// then becomes "fully blocked" (second sensor activated)
+		// then both sensors must be unblocked; then track becomes unblocked.
+		// TODO: trigger events must be tagged with track number;
+		// crossing deactivates when all triggered tracks become unblocked,
+		// or when the timeout expires.
 	}
 
+	std::vector<std::pair<SensorDataProvider, SensorDataProvider>>* data_providers_;
 	// todo pointer to dma adc data
 	std::vector<int32_t> sensor_values_;
 

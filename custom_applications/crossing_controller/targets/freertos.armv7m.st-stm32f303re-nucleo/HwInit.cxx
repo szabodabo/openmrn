@@ -66,7 +66,7 @@ const size_t EEPROMEmulation::SECTOR_SIZE = 2048;
 
 TIM_HandleTypeDef tim1_handle;
 ADC_HandleTypeDef adc1_handle, adc2_handle, adc3_handle;
-DMA_HandleTypeDef hdma_adc1;
+DMA_HandleTypeDef hdma_adc1, hdma_adc2, hdma_adc3;
 
 extern "C" {
 
@@ -213,6 +213,11 @@ bool animation_on_scheduled = false;
 bool animation_off_scheduled = false;
 AnimationCounter tim3_servo_animation(TIM3_SERVO_MIN_DUTY, TIM3_SERVO_MIN_DUTY, 1);
 
+volatile uint8_t adc_count = 0;
+uint16_t adcDet1278[4];
+uint16_t adcDet356[3];
+uint16_t adcDet4;
+
 void tim3_interrupt_handler(void) {
     TIM3->SR &= ~TIM_IT_UPDATE;
 
@@ -243,16 +248,9 @@ void EnableServoTimer(TIM_HandleTypeDef* tim) {
 void adc1_2_interrupt_handler(void) {
     HAL_ADC_IRQHandler(&adc1_handle);
 }
-//
-//uint32_t ADC_VALUE;
-volatile uint8_t adc_count = 0;
-uint16_t adcDet1278[4];
-uint16_t adcDet356[3];
-uint16_t adcDet4;
 
 // Not being called in DMA mode; not sure why.
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* adc) {
-//  ADC_VALUE = HAL_ADC_GetValue(adc);
     ++adc_count;
 }
 
@@ -326,6 +324,44 @@ static void clock_setup(void)
 
     // This will fail if the clocks are somehow misconfigured.
     HASSERT(SystemCoreClock == cm3_cpu_clock_hz);
+}
+
+ void ADCInit(ADC_HandleTypeDef* hadc, int num_channels) {
+    hadc->Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+    hadc->Init.Resolution = ADC_RESOLUTION_12B;
+    hadc->Init.ScanConvMode = ENABLE;
+    hadc->Init.ContinuousConvMode = ENABLE;
+    hadc->Init.DiscontinuousConvMode = DISABLE;
+    hadc->Init.DataAlign = ADC_DATAALIGN_RIGHT;
+    hadc->Init.NbrOfConversion = num_channels;
+    hadc->Init.DMAContinuousRequests = ENABLE;
+    hadc->Init.EOCSelection = ADC_EOC_SEQ_CONV;
+    hadc->Init.LowPowerAutoWait = DISABLE;
+    hadc->Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
+    HASSERT(HAL_ADC_Init(hadc) == HAL_OK);
+}
+
+void ADC_DMA_Init(ADC_HandleTypeDef* hadc, DMA_HandleTypeDef* hdma, DMA_Channel_TypeDef* dma_ch) {
+    hdma->Instance = dma_ch;
+    hdma->Init.Direction = DMA_PERIPH_TO_MEMORY;
+    hdma->Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma->Init.MemInc = DMA_MINC_ENABLE;
+    hdma->Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
+    hdma->Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
+    hdma->Init.Mode = DMA_CIRCULAR;
+    hdma->Init.Priority = DMA_PRIORITY_LOW;
+    HASSERT(HAL_DMA_Init(hdma) == HAL_OK);
+    __HAL_LINKDMA(hadc, DMA_Handle, *hdma);
+    HAL_ADCEx_Calibration_Start(hadc, ADC_SINGLE_ENDED);
+}
+
+void ADCChannelInit(ADC_HandleTypeDef* hadc, uint32_t channel, int rank) {
+    ADC_ChannelConfTypeDef adc_channel = {0};
+    adc_channel.SingleDiff = ADC_SINGLE_ENDED;
+    adc_channel.SamplingTime = ADC_SAMPLETIME_601CYCLES_5;
+    adc_channel.Rank = rank;
+    adc_channel.Channel = channel;
+    HASSERT(HAL_ADC_ConfigChannel(hadc, &adc_channel) == HAL_OK);
 }
 
 /** Initialize the processor hardware.
@@ -486,66 +522,42 @@ void hw_preinit(void)
      *   ADC2: IN1=DET3,           IN3=DET5, IN4=DET6
      *   ADC3: IN12=DET4  <-- yes, IN12
      */
-    auto adc_init_fn = [](ADC_HandleTypeDef* hadc, int num_channels) {
-        hadc->Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
-        hadc->Init.Resolution = ADC_RESOLUTION_12B;
-        hadc->Init.ScanConvMode = ENABLE;
-        hadc->Init.ContinuousConvMode = ENABLE;
-        hadc->Init.DiscontinuousConvMode = DISABLE;
-        hadc->Init.DataAlign = ADC_DATAALIGN_RIGHT;
-        hadc->Init.NbrOfConversion = num_channels;
-        hadc->Init.DMAContinuousRequests = ENABLE;
-        hadc->Init.EOCSelection = ADC_EOC_SEQ_CONV;
-        hadc->Init.LowPowerAutoWait = DISABLE;
-        hadc->Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
-        HASSERT(HAL_ADC_Init(hadc) == HAL_OK);
-    };
-    
     adc1_handle = {0};
     adc1_handle.Instance = ADC1;
-    adc_init_fn(&adc1_handle, 4);
+    ADCInit(&adc1_handle, 4);
+
+    ADCChannelInit(&adc1_handle, ADC_CHANNEL_1, 1);
+    ADCChannelInit(&adc1_handle, ADC_CHANNEL_2, 2);
+    ADCChannelInit(&adc1_handle, ADC_CHANNEL_3, 3);
+    ADCChannelInit(&adc1_handle, ADC_CHANNEL_4, 4);
+
+    hdma_adc1 = {0};
+    ADC_DMA_Init(&adc1_handle, &hdma_adc1, DMA1_Channel1);
+    HAL_ADC_Start_DMA(&adc1_handle, (uint32_t*)adcDet1278, 4);
+
     adc2_handle = {0};
     adc2_handle.Instance = ADC2;
-    adc_init_fn(&adc2_handle, 3);
+    ADCInit(&adc2_handle, 3);
+
+    hdma_adc2 = {0};
+    ADCChannelInit(&adc2_handle, ADC_CHANNEL_1, 1);
+    ADCChannelInit(&adc2_handle, ADC_CHANNEL_3, 2);
+    ADCChannelInit(&adc2_handle, ADC_CHANNEL_4, 3);
+
+    ADC_DMA_Init(&adc2_handle, &hdma_adc2, DMA2_Channel1);
+    HAL_ADC_Start_DMA(&adc2_handle, (uint32_t*)adcDet356, 3);
+
     adc3_handle = {0};
     adc3_handle.Instance = ADC3;
-    adc_init_fn(&adc3_handle, 1);
+    ADCInit(&adc3_handle, 1);    
 
-    auto adc_ch_init_fn = [](ADC_HandleTypeDef* hadc, uint32_t channel, int rank) {
-        ADC_ChannelConfTypeDef adc_channel = {0};
-        adc_channel.SingleDiff = ADC_SINGLE_ENDED;
-        adc_channel.SamplingTime = ADC_SAMPLETIME_601CYCLES_5;
-        adc_channel.Rank = rank;
-        adc_channel.Channel = channel;
-        HASSERT(HAL_ADC_ConfigChannel(hadc, &adc_channel) == HAL_OK);
-    };
-
-    adc_ch_init_fn(&adc1_handle, ADC_CHANNEL_1, 1);
-    adc_ch_init_fn(&adc1_handle, ADC_CHANNEL_2, 2);
-    adc_ch_init_fn(&adc1_handle, ADC_CHANNEL_3, 3);
-    adc_ch_init_fn(&adc1_handle, ADC_CHANNEL_4, 4);
-
-    auto adc_dma_init_fn = [](ADC_HandleTypeDef* hadc, DMA_Channel_TypeDef* dma_ch) {
-        DMA_HandleTypeDef hdma = {0};
-        hdma.Instance = dma_ch;
-        hdma.Init.Direction = DMA_PERIPH_TO_MEMORY;
-        hdma.Init.PeriphInc = DMA_PINC_DISABLE;
-        hdma.Init.MemInc = DMA_MINC_ENABLE;
-        hdma.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
-        hdma.Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
-        hdma.Init.Mode = DMA_CIRCULAR;
-        hdma.Init.Priority = DMA_PRIORITY_LOW;
-        HASSERT(HAL_DMA_Init(&hdma) == HAL_OK);
-        __HAL_LINKDMA(hadc, DMA_Handle, hdma);
-        HAL_ADCEx_Calibration_Start(hadc, ADC_SINGLE_ENDED);
-    };
-
-    adc_dma_init_fn(&adc1_handle, DMA1_Channel1);
+    hdma_adc3 = {0};
+    ADCChannelInit(&adc3_handle, ADC_CHANNEL_12, 1);
+    ADC_DMA_Init(&adc3_handle, &hdma_adc2, DMA2_Channel5);
+    HAL_ADC_Start_DMA(&adc3_handle, (uint32_t*)&adcDet4, 1);
 
     NVIC_SetPriority(ADC1_2_IRQn, 0);
-    NVIC_EnableIRQ(ADC1_2_IRQn);
-
-    HAL_ADC_Start_DMA(&adc1_handle, (uint32_t*)adcDet1278, 4);
+    NVIC_EnableIRQ(ADC1_2_IRQn);    
 
     GpioInit::hw_init();
 
