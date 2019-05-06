@@ -132,7 +132,7 @@ static void clock_setup(void)
     while (!(RCC->CR & RCC_CR_HSIRDY))
         ;
 
-#define USE_EXTERNAL_8_MHz_CLOCK_SOURCE 1
+#define USE_EXTERNAL_8_MHz_CLOCK_SOURCE 0
 /* configure PLL:  8 MHz * 6 = 48 MHz */
 #if USE_EXTERNAL_8_MHz_CLOCK_SOURCE
     RCC->CR |= RCC_CR_HSEON | RCC_CR_HSEBYP;

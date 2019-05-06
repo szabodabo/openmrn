@@ -3,7 +3,7 @@
 #include "utils/GpioInitializer.hxx"
 #include "BlinkerGPIO.hxx"
 
-GPIO_PIN(LED_GREEN_RAW, LedPin, A, 5);
+GPIO_PIN(LED_GREEN_RAW, LedPin, B, 2);  // STATUS_LED
 
 GPIO_PIN(SW_USER, GpioInputPU, C, 13);
 
