@@ -39,6 +39,7 @@
 #include "openlcb/ConfiguredConsumer.hxx"
 #include "openlcb/ConfiguredProducer.hxx"
 #include "openlcb/ServoConsumer.hxx"
+#include "openlcb/ServoConsumerConfig.hxx"
 #include "utils/Hub.hxx"
 
 #include "freertos_drivers/st/Stm32Gpio.hxx"
@@ -73,7 +74,9 @@ openlcb::SimpleCanStack stack(NODE_ID);
 
 class BusActivityBlinky : public openlcb::Polling, public HubPort {
 public:
-    BusActivityBlinky(Service* service) : HubPort(service) {}
+    BusActivityBlinky(openlcb::SimpleCanStack* stack) : HubPort(stack->service()) {
+        stack->gridconnect_hub()->register_port(this);
+    }
 
     Action entry() override {
         activity_request_ = true;
@@ -120,18 +123,82 @@ static_assert(openlcb::CONFIG_FILE_SIZE <= 300, "Need to adjust eeprom size");
 extern const char *const openlcb::SNIP_DYNAMIC_FILENAME =
     openlcb::CONFIG_FILENAME;
 
-openlcb::ServoConsumer srv0(
+class ServoAndRelayConsumer : public openlcb::ServoConsumer, public openlcb::SimpleEventHandler {
+public:
+    ServoAndRelayConsumer(openlcb::Node *node, const openlcb::ServoConsumerConfig &cfg,
+        const uint32_t pwmCountPerMs, PWM *pwm, uint8_t* relay_set, uint8_t* relay_reset)
+        : openlcb::ServoConsumer(node, cfg, pwmCountPerMs, pwm), cfg_(cfg), relay_set_bit_(relay_set), relay_reset_bit_(relay_reset) {
+    }
+
+    UpdateAction apply_configuration(int fd, bool initial_load, BarrierNotifiable* done) OVERRIDE {
+        AutoNotify an(done);
+
+    	// Spy on the on/off event to set the relay.
+    	// This class is implemented as a wrapper because the relay doesn't need
+    	// its own config items. If it did, we'd need a new config descriptor.
+    	// Also, because the LCC-compliant consumer chatter is implemented in ServoConsumer,
+    	// we can register a very dumb EventHandler here to be the spy.
+    	if (!initial_load) {
+    		openlcb::EventRegistry::instance()->unregister_handler(this);
+    	}
+
+    	const openlcb::EventId srv_min = cfg_.event_rotate_min().read(fd);
+    	const openlcb::EventId srv_max = cfg_.event_rotate_max().read(fd);
+
+    	openlcb::EventRegistry::instance()->register_handler(
+    	            openlcb::EventRegistryEntry(this, srv_min, /*user_arg=*/EVENT_SERVO_MIN), /*mask=*/0);
+    	openlcb::EventRegistry::instance()->register_handler(
+    	    	            openlcb::EventRegistryEntry(this, srv_max, /*user_arg=*/EVENT_SERVO_MAX), /*mask=*/0);
+
+    	return openlcb::ServoConsumer::apply_configuration(fd, initial_load, done->new_child());
+    }
+
+    // TODO: confirm if this works in the startup case
+    void handle_event_report(const EventRegistryEntry &registry_entry,
+                             EventReport *event,
+                             BarrierNotifiable *done) OVERRIDE {
+    	AutoNotify an(done);
+    	if (registry_entry.user_arg == EVENT_SERVO_MIN) {
+    		*relay_set_bit_ = 0;
+    		*relay_reset_bit_ = 1;
+    		UpdateRelays();
+    	} else if (registry_entry.user_arg == EVENT_SERVO_MAX) {
+    		*relay_set_bit_ = 1;
+    		*relay_reset_bit_ = 0;
+    		UpdateRelays();
+    	}
+    }
+
+    void handle_identify_global(const EventRegistryEntry &registry_entry, EventReport *event, BarrierNotifiable *done)
+            OVERRIDE {
+    	return done->notify();
+    }
+
+private:
+    const openlcb::ServoConsumerConfig cfg_;
+    uint8_t *relay_set_bit_, *relay_reset_bit_;
+
+    enum EventMapping {
+    	EVENT_SERVO_MIN = 1,
+		EVENT_SERVO_MAX = 2,
+    };
+};
+
+extern uint8_t RELAY_DATA[];
+uint8_t RELAY_DATA[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+ServoAndRelayConsumer srv0(
     stack.node(), cfg.seg().servo_consumers().entry<0>(),
-    servoPwmCountPerMs, servo_channels[0]);
-openlcb::ServoConsumer srv1(
+    servoPwmCountPerMs, servo_channels[0], &RELAY_DATA[0], &RELAY_DATA[1]);
+ServoAndRelayConsumer srv1(
     stack.node(), cfg.seg().servo_consumers().entry<1>(),
-    servoPwmCountPerMs, servo_channels[1]);
-openlcb::ServoConsumer srv2(
+    servoPwmCountPerMs, servo_channels[1], &RELAY_DATA[2], &RELAY_DATA[3]);
+ServoAndRelayConsumer srv2(
     stack.node(), cfg.seg().servo_consumers().entry<2>(),
-    servoPwmCountPerMs, servo_channels[2]);
-openlcb::ServoConsumer srv3(
+    servoPwmCountPerMs, servo_channels[2], &RELAY_DATA[4], &RELAY_DATA[5]);
+ServoAndRelayConsumer srv3(
     stack.node(), cfg.seg().servo_consumers().entry<3>(),
-    servoPwmCountPerMs, servo_channels[3]);
+    servoPwmCountPerMs, servo_channels[3], &RELAY_DATA[6], &RELAY_DATA[7]);
 
 
 // Instantiates the actual producer and consumer objects for the given GPIO
@@ -153,8 +220,7 @@ openlcb::ConfiguredConsumer consumer_green(
  */
 int appl_main(int argc, char *argv[])
 {
-    BusActivityBlinky activity_blinky(stack.service());
-    stack.gridconnect_hub()->register_port(&activity_blinky);
+    BusActivityBlinky activity_blinky(&stack);
 
     // The producers need to be polled repeatedly for changes and to execute the
     // debouncing algorithm. This class instantiates a refreshloop and adds the two

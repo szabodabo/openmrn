@@ -41,6 +41,7 @@
 #include "stm32f0xx_hal_gpio_ex.h"
 #include "stm32f0xx_hal_dma.h"
 #include "stm32f0xx_hal_tim.h"
+#include "stm32f0xx_hal_spi.h"
 
 #include "os/OS.hxx"
 #include "Stm32Uart.hxx"
@@ -88,6 +89,16 @@ PWM * const servo_channels[4] = { //
     Stm32PWMGroup::get_channel(&servo_timer, 3),
     Stm32PWMGroup::get_channel(&servo_timer, 4)};
 
+extern uint8_t RELAY_DATA[];
+
+SPI_HandleTypeDef hspi1;
+
+#define RLY_LAT_GPIO_PORT GPIOB
+#define RLY_LAT_GPIO_PIN GPIO_PIN_5
+
+#define RLY_ENABLE_GPIO_PORT GPIOB
+#define RLY_ENABLE_GPIO_PIN GPIO_PIN_6
+
 extern "C" {
 
 /** Blink LED */
@@ -96,6 +107,7 @@ static uint32_t rest_pattern = 0;
 
 void hw_set_to_safe(void)
 {
+	HAL_GPIO_WritePin(RLY_ENABLE_GPIO_PORT, RLY_ENABLE_GPIO_PIN, GPIO_PIN_RESET);
 }
 
 void resetblink(uint32_t pattern)
@@ -199,6 +211,7 @@ void hw_preinit(void)
     __HAL_RCC_CAN1_CLK_ENABLE();
     __HAL_RCC_TIM14_CLK_ENABLE();
     __HAL_RCC_TIM1_CLK_ENABLE();
+    __HAL_RCC_SPI1_CLK_ENABLE();
 
     /* setup pinmux */
     GPIO_InitTypeDef gpio_init;
@@ -276,6 +289,80 @@ void hw_preinit(void)
     SERVO2_EN_Pin::set(1);
     SERVO3_EN_Pin::set(1);
     SERVO4_EN_Pin::set(1);
+
+    /*
+      Relay Driver (frogs)
+
+      To operate: Latch low, write data (8..1), latch high
+    */
+
+    // Latch: PB5
+    memset(&gpio_init, 0, sizeof(gpio_init));
+    gpio_init.Pin = RLY_LAT_GPIO_PIN;
+    gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio_init.Pull = GPIO_PULLUP;
+    gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(RLY_LAT_GPIO_PORT, &gpio_init);
+	HAL_GPIO_WritePin(RLY_LAT_GPIO_PORT, RLY_LAT_GPIO_PIN, GPIO_PIN_SET);
+
+    // Enable: PB6 
+    gpio_init.Pin = RLY_ENABLE_GPIO_PIN;
+    gpio_init.Pull = GPIO_PULLDOWN;
+    HAL_GPIO_Init(RLY_ENABLE_GPIO_PORT, &gpio_init);
+    HAL_GPIO_WritePin(RLY_ENABLE_GPIO_PORT, RLY_ENABLE_GPIO_PIN, GPIO_PIN_SET);
+
+    // nFault: PB7
+    gpio_init.Pin = GPIO_PIN_7;
+    gpio_init.Mode = GPIO_MODE_INPUT;
+    gpio_init.Pull = GPIO_PULLUP;
+    HAL_GPIO_Init(GPIOB, &gpio_init);
+
+    /*
+      SPI1_SCK: PA5
+      SPI1_MISO: PA6
+      SPI1_MOSI: PA7
+    */
+    memset(&gpio_init, 0, sizeof(gpio_init));
+    gpio_init.Pin = GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7;
+    gpio_init.Mode = GPIO_MODE_AF_PP;
+    gpio_init.Pull = GPIO_NOPULL;
+    gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpio_init.Alternate = GPIO_AF0_SPI1;
+    HAL_GPIO_Init(GPIOA, &gpio_init);
+
+    memset(&hspi1, 0, sizeof(hspi1));
+    hspi1.Instance = SPI1;
+    hspi1.Init.Mode = SPI_MODE_MASTER;
+    // Change if we want to read output data
+    hspi1.Init.Direction = SPI_DIRECTION_1LINE;
+    hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+    hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+    hspi1.Init.NSS = SPI_NSS_SOFT;
+    hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
+    // client writes data as [01234567]
+    hspi1.Init.FirstBit = SPI_FIRSTBIT_LSB;  
+    hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+    hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
+
+    if (HAL_SPI_DeInit(&hspi1) != HAL_OK) {
+        HASSERT(0);
+    }
+    if (HAL_SPI_Init(&hspi1) != HAL_OK) {
+        HASSERT(0);
+    }
+}
+
+void UpdateRelays() {
+	HAL_GPIO_WritePin(RLY_LAT_GPIO_PORT, RLY_LAT_GPIO_PIN, GPIO_PIN_RESET);
+	uint8_t tx_data = 0;
+	for (uint8_t i = 0; i < 8; i++) {
+		tx_data |= (RELAY_DATA[i] << i);
+	}
+	if (HAL_SPI_Transmit(&hspi1, &tx_data, 1, HAL_MAX_DELAY) != HAL_OK) {
+		HASSERT(0);
+	}
+	for (volatile uint8_t i = 0; i < 10; i++);
+	HAL_GPIO_WritePin(RLY_LAT_GPIO_PORT, RLY_LAT_GPIO_PIN, GPIO_PIN_SET);
 }
 
 }

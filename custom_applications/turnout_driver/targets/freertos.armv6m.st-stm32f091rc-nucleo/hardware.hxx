@@ -2,6 +2,9 @@
 #include "Stm32Gpio.hxx"
 #include "utils/GpioInitializer.hxx"
 #include "BlinkerGPIO.hxx"
+#include "stm32f0xx_hal_dma.h"
+#include "stm32f0xx_hal_spi.h"
+
 
 GPIO_PIN(LED_GREEN_RAW, LedPin, B, 2);  // STATUS_LED
 
@@ -24,3 +27,10 @@ typedef BLINKER_Pin LED_GREEN_Pin;
 
 extern PWM* const servo_channels[];
 const uint32_t servoPwmCountPerMs = configCPU_CLOCK_HZ / 1000;
+
+extern uint8_t RELAY_DATA[];
+
+extern "C" {
+void UpdateRelays();
+}
+
