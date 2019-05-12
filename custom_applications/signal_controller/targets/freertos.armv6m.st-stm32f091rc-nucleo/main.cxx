@@ -150,7 +150,7 @@ int appl_main(int argc, char *argv[])
     stack.check_version_and_factory_reset(
         cfg.seg().internal_config(), openlcb::CANONICAL_VERSION, false);
 
-    WriteLEDData();
+    StartLEDData();
 
     // The necessary physical ports must be added to the stack.
     //

@@ -42,6 +42,7 @@
 #include "stm32f0xx_hal_dma.h"
 #include "stm32f0xx_hal_tim.h"
 #include "stm32f0xx_hal_spi.h"
+#include "stm32f0xx_hal.h"
 
 #include "os/OS.hxx"
 #include "Stm32Uart.hxx"
@@ -70,7 +71,10 @@ static Stm32EEPROMEmulation eeprom0("/dev/eeprom", 512);
 
 const size_t EEPROMEmulation::SECTOR_SIZE = 2048;
 
-SPI_HandleTypeDef hspi1;
+static SPI_HandleTypeDef hspi1;
+volatile static uint16_t LedDriverData[24];
+static DMA_HandleTypeDef hdma_led_tx;
+static TIM_HandleTypeDef htim6;
 
 extern "C" {
 
@@ -80,6 +84,7 @@ static uint32_t rest_pattern = 0;
 
 void hw_set_to_safe(void)
 {
+	LedDriver_BLANK_Pin::set(1);
 }
 
 void resetblink(uint32_t pattern)
@@ -183,6 +188,8 @@ void hw_preinit(void)
     __HAL_RCC_CAN1_CLK_ENABLE();
     __HAL_RCC_TIM14_CLK_ENABLE();
     __HAL_RCC_SPI1_CLK_ENABLE();
+    __HAL_RCC_DMA1_CLK_ENABLE();
+    __HAL_RCC_TIM6_CLK_ENABLE();
 
     /* setup pinmux */
     GPIO_InitTypeDef gpio_init;
@@ -253,7 +260,7 @@ void hw_preinit(void)
 	hspi1.Init.DataSize = SPI_DATASIZE_12BIT;  // HAL uses 16-bit input
 	hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
 	hspi1.Init.NSS = SPI_NSS_SOFT;
-	hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+	hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
 	hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
 	hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
 	hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
@@ -264,34 +271,90 @@ void hw_preinit(void)
 	if (HAL_SPI_Init(&hspi1) != HAL_OK) {
 		HASSERT(0);
 	}
-}
 
-uint16_t RXDATA[16];
-
-void WriteLEDData() {
-	uint16_t spi_data[24];
-	for (int i = 0; i < 24; i++) {
-		// yellow is a bit brighter
-		// todo: should be config
-		if (i % 3 == 0) {
-			spi_data[i] = 100;
-		} else if (i % 3 == 1) {
-			spi_data[i] = 500;
-		} else {
-			spi_data[i] = 200;
-		}
-	}
-
-	if (HAL_SPI_Transmit(&hspi1, (uint8_t*)&spi_data, 24, HAL_MAX_DELAY) != HAL_OK) {
+	hdma_led_tx.Instance = DMA1_Channel3;
+	hdma_led_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+	hdma_led_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+	hdma_led_tx.Init.MemInc = DMA_MINC_ENABLE;
+	hdma_led_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
+	hdma_led_tx.Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
+	hdma_led_tx.Init.Mode = DMA_NORMAL;
+	hdma_led_tx.Init.Priority = DMA_PRIORITY_MEDIUM;
+	if (HAL_DMA_Init(&hdma_led_tx) != HAL_OK) {
 		HASSERT(0);
 	}
+	__HAL_LINKDMA(&hspi1, hdmatx, hdma_led_tx);
+	HAL_NVIC_SetPriority(DMA1_Ch2_3_DMA2_Ch1_2_IRQn, 1, 1);
+	HAL_NVIC_EnableIRQ(DMA1_Ch2_3_DMA2_Ch1_2_IRQn);
 
-	for (volatile uint8_t t=0; t < 30; t++);
+	htim6.Instance = TIM6;
+	htim6.Init.Prescaler = (configCPU_CLOCK_HZ/2/150)-1;
+	htim6.Init.Period = 1;
+	HAL_NVIC_SetPriority(TIM6_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(TIM6_IRQn);
+	HAL_TIM_Base_Init(&htim6);
+	HAL_TIM_Base_Start_IT(&htim6);
+}
+
+void dma_ch2_3_dma2_ch1_2_interrupt_handler() {
+	HAL_DMA_IRQHandler(hspi1.hdmatx);
+}
+
+volatile static uint32_t CURRENT_ANIM_TICK = 0;
+#define NUM_TICKS_IN_CYCLE 2000
+
+void AnimateLEDs() {
+	if (HAL_SPI_GetState(&hspi1) > HAL_SPI_STATE_READY) {
+		return;
+	}
+
+	if (++CURRENT_ANIM_TICK > NUM_TICKS_IN_CYCLE) {
+		CURRENT_ANIM_TICK = 0;
+	}
+	const double progress =  (double) CURRENT_ANIM_TICK / (double) NUM_TICKS_IN_CYCLE;
+	//const double progress = (CURRENT_ANIM_TICK*2 > NUM_TICKS_IN_CYCLE) ? 1.0 : 0.0;
+
+	for (int i = 0; i < 24; i++) {
+		// todo: should be config
+		uint16_t bright = 0;
+		if (i % 3 == 0) {
+			bright = 300;
+		} else if (i % 3 == 1) {
+			bright = 1200;
+		} else {
+			bright = 500;
+		}
+
+		LedDriverData[i] = (double) bright * progress;
+		//LedDriverData[i] = 1000;
+	}
+	if (HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*)&LedDriverData, 24) != HAL_OK) {
+		HASSERT(0);
+	}
+}
+
+void timer6_dac_interrupt_handler() {
+	AnimateLEDs();
+	__HAL_TIM_CLEAR_IT(&htim6, TIM_IT_UPDATE);
+}
+
+void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef* hspi) {
 	LedDriver_XLAT_Pin::set(1);
-	for (volatile uint8_t t=0; t < 30; t++);
+	//for (volatile uint8_t t=0; t < 30; t++);
 	LedDriver_XLAT_Pin::set(0);
+}
+
+/*
+ * LED Update Strategy:
+ * - Continuous DMA writes buffered LED GS info to SPI.
+ * - At 100Hz, recalculate animation data and write into DMA buffer.
+ */
+
+void StartLEDData() {
+
 
 	LedDriver_BLANK_Pin::set(0);
+	return;
 }
 
 }

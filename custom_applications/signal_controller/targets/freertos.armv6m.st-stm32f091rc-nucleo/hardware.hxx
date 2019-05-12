@@ -33,4 +33,4 @@ typedef GpioInitializer<LED_BLUE_RAW_Pin, ADJ_BUTTON_Pin,
 typedef LED_BLUE_RAW_Pin BLINKER_RAW_Pin;
 typedef BLINKER_Pin LED_BLUE_Pin;
 
-extern "C" { void WriteLEDData(); }
+extern "C" { void StartLEDData(); }
