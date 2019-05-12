@@ -62,7 +62,7 @@ OVERRIDE_CONST(main_thread_stack_size, 1300);
 // Specifies the 48-bit OpenLCB node identifier. This must be unique for every
 // hardware manufactured, so in production this should be replaced by some
 // easily incrementable method.
-extern const openlcb::NodeID NODE_ID = 0x050101011816ULL;
+extern const openlcb::NodeID NODE_ID = 0x050101011817ULL;
 
 // Sets up a comprehensive OpenLCB stack for a single virtual node. This stack
 // contains everything needed for a usual peripheral node -- all
@@ -149,6 +149,8 @@ int appl_main(int argc, char *argv[])
     
     stack.check_version_and_factory_reset(
         cfg.seg().internal_config(), openlcb::CANONICAL_VERSION, false);
+
+    WriteLEDData();
 
     // The necessary physical ports must be added to the stack.
     //

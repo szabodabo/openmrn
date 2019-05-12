@@ -70,6 +70,8 @@ static Stm32EEPROMEmulation eeprom0("/dev/eeprom", 512);
 
 const size_t EEPROMEmulation::SECTOR_SIZE = 2048;
 
+SPI_HandleTypeDef hspi1;
+
 extern "C" {
 
 /** Blink LED */
@@ -180,6 +182,7 @@ void hw_preinit(void)
     __HAL_RCC_USART2_CLK_ENABLE();
     __HAL_RCC_CAN1_CLK_ENABLE();
     __HAL_RCC_TIM14_CLK_ENABLE();
+    __HAL_RCC_SPI1_CLK_ENABLE();
 
     /* setup pinmux */
     GPIO_InitTypeDef gpio_init;
@@ -228,5 +231,67 @@ void hw_preinit(void)
     }
     NVIC_SetPriority(TIM14_IRQn, 0);
     NVIC_EnableIRQ(TIM14_IRQn);    
+
+    /*
+	  SPI1_SCK: PA5
+	  SPI1_MISO: PA6
+	  SPI1_MOSI: PA7
+	*/
+	memset(&gpio_init, 0, sizeof(gpio_init));
+	gpio_init.Pin = GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7;
+	gpio_init.Mode = GPIO_MODE_AF_PP;
+	gpio_init.Pull = GPIO_NOPULL;
+	gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
+	gpio_init.Alternate = GPIO_AF0_SPI1;
+	HAL_GPIO_Init(GPIOA, &gpio_init);
+
+	memset(&hspi1, 0, sizeof(hspi1));
+	hspi1.Instance = SPI1;
+	hspi1.Init.Mode = SPI_MODE_MASTER;
+	// Change if we want to read output data
+	hspi1.Init.Direction = SPI_DIRECTION_1LINE;
+	hspi1.Init.DataSize = SPI_DATASIZE_12BIT;  // HAL uses 16-bit input
+	hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+	hspi1.Init.NSS = SPI_NSS_SOFT;
+	hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+	hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+	hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+	hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
+
+	if (HAL_SPI_DeInit(&hspi1) != HAL_OK) {
+		HASSERT(0);
+	}
+	if (HAL_SPI_Init(&hspi1) != HAL_OK) {
+		HASSERT(0);
+	}
 }
+
+uint16_t RXDATA[16];
+
+void WriteLEDData() {
+	uint16_t spi_data[24];
+	for (int i = 0; i < 24; i++) {
+		// yellow is a bit brighter
+		// todo: should be config
+		if (i % 3 == 0) {
+			spi_data[i] = 100;
+		} else if (i % 3 == 1) {
+			spi_data[i] = 500;
+		} else {
+			spi_data[i] = 200;
+		}
+	}
+
+	if (HAL_SPI_Transmit(&hspi1, (uint8_t*)&spi_data, 24, HAL_MAX_DELAY) != HAL_OK) {
+		HASSERT(0);
+	}
+
+	for (volatile uint8_t t=0; t < 30; t++);
+	LedDriver_XLAT_Pin::set(1);
+	for (volatile uint8_t t=0; t < 30; t++);
+	LedDriver_XLAT_Pin::set(0);
+
+	LedDriver_BLANK_Pin::set(0);
+}
+
 }
