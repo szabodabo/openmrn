@@ -29,7 +29,7 @@ extern const SimpleNodeStaticValues SNIP_STATIC_DATA = {
 
 /// Modify this value every time the EEPROM needs to be cleared on the node
 /// after an update.
-static constexpr uint16_t CANONICAL_VERSION = 0x184a;
+static constexpr uint16_t CANONICAL_VERSION = 0x184b;
 
 using InputConfigs = openlcb::RepeatedGroup<openlcb::ProducerConfig, 8>;
 
@@ -38,7 +38,7 @@ using InputConfigs = openlcb::RepeatedGroup<openlcb::ProducerConfig, 8>;
 CDI_GROUP(MainSegment, Segment(MemoryConfigDefs::SPACE_CONFIG), Offset(128));
 CDI_GROUP_ENTRY(internal_config, InternalConfigData);
 CDI_GROUP_ENTRY(signal_config, signal_controller::SignalConfigWrapper);
-CDI_GROUP_ENTRY(plug_inputs, InputConfigs, Name("Plug Inputs"));
+CDI_GROUP_ENTRY(plug_inputs, InputConfigs, Name("Plug Inputs"), RepName("Input Pin"));
 CDI_GROUP_END();
 
 /// This segment is only needed temporarily until there is program code to set

@@ -67,10 +67,12 @@ static Stm32Uart uart0("/dev/ser0", USART2, USART2_IRQn);
 /** CAN 0 CAN driver instance */
 static Stm32Can can0("/dev/can0");
 
+// Insightful discussion on these values here:
+//   https://groups.io/g/openlcb/topic/22218050#10533
 /** EEPROM emulation driver. The file size might be made bigger. */
-static Stm32EEPROMEmulation eeprom0("/dev/eeprom", 512);
+static Stm32EEPROMEmulation eeprom0("/dev/eeprom", 2048);
 
-const size_t EEPROMEmulation::SECTOR_SIZE = 2048;
+const size_t EEPROMEmulation::SECTOR_SIZE = 4096;
 
 static SPI_HandleTypeDef hspi1;
 volatile static uint16_t LedDriverData[24];
