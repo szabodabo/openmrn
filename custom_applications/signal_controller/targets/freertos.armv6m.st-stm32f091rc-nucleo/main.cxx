@@ -38,13 +38,15 @@
 #include "openlcb/SimpleStack.hxx"
 #include "openlcb/ConfiguredConsumer.hxx"
 #include "openlcb/ConfiguredProducer.hxx"
-#include "utils/Hub.hxx"
 
 #include "freertos_drivers/st/Stm32Gpio.hxx"
 #include "freertos_drivers/common/BlinkerGPIO.hxx"
 #include "freertos_drivers/common/DummyGPIO.hxx"
 #include "config.hxx"
 #include "hardware.hxx"
+#include "BusActivityBlinky.hxx"
+#include "AnimatedLamp.hxx"
+#include "SignalEventHandler.hxx"
 
 // These preprocessor symbols are used to select which physical connections
 // will be enabled in the main(). See @ref appl_main below.
@@ -70,38 +72,6 @@ extern const openlcb::NodeID NODE_ID = 0x050101011817ULL;
 // protocol, ACDI, CDI, a bunch of memory spaces, etc.
 openlcb::SimpleCanStack stack(NODE_ID);
 
-class BusActivityBlinky : public openlcb::Polling, public HubPort {
-public:
-    BusActivityBlinky(openlcb::SimpleCanStack* stack) : HubPort(stack->service()) {
-        stack->gridconnect_hub()->register_port(this);
-    }
-
-    Action entry() override {
-        activity_request_ = true;
-        return release_and_exit();
-    }
-
-    virtual void poll_33hz(openlcb::WriteHelper* helper, Notifiable* done) override {
-        if (activity_request_ && !activity_on_) {
-            activity_request_ = false;
-            LED_BLUE_RAW_Pin::set(1);
-            activity_on_ = true;
-        } else if (activity_on_) {
-            activity_on_ = false;
-            LED_BLUE_RAW_Pin::set(0);
-        }
-        done->notify();
-    }
-
-    void request_blink() {
-        activity_request_ = true;
-    }
-
-private:
-    bool activity_request_ = false;
-    bool activity_on_ = false;
-};
-
 // ConfigDef comes from config.hxx and is specific to the particular device and
 // target. It defines the layout of the configuration memory space and is also
 // used to generate the cdi.xml file. Here we instantiate the configuration
@@ -114,24 +84,31 @@ extern const char *const openlcb::CONFIG_FILENAME = "/dev/eeprom";
 // The size of the memory space to export over the above device.
 extern const size_t openlcb::CONFIG_FILE_SIZE =
     cfg.seg().size() + cfg.seg().offset();
-static_assert(openlcb::CONFIG_FILE_SIZE <= 300, "Need to adjust eeprom size");
+static_assert(openlcb::CONFIG_FILE_SIZE <= 600, "Need to adjust eeprom size");
 // The SNIP user-changeable information in also stored in the above eeprom
 // device. In general this could come from different eeprom segments, but it is
 // simpler to keep them together.
 extern const char *const openlcb::SNIP_DYNAMIC_FILENAME =
     openlcb::CONFIG_FILENAME;
 
-// Instantiates the actual producer and consumer objects for the given GPIO
-// pins from above. The ConfiguredConsumer class takes care of most of the
-// complicated setup and operation requirements. We need to give it the virtual
-// node pointer, the configuration configuration from the CDI definition, and
-// the hardware pin definition. The virtual node pointer comes from the stack
-// object. The configuration structure comes from the CDI definition object,
-// segment 'seg', in which there is a repeated group 'consumers', and we assign
-// the individual entries to the individual consumers. Each consumer gets its
-// own GPIO pin.
-openlcb::ConfiguredConsumer consumer_blue(
-    stack.node(), cfg.seg().consumers().entry<0>(), LED_BLUE_Pin());
+openlcb::ConfiguredProducer producer_plug1(
+    stack.node(), cfg.seg().plug_inputs().entry<0>(), Plug_Input1_Pin());
+openlcb::ConfiguredProducer producer_plug2(
+    stack.node(), cfg.seg().plug_inputs().entry<1>(), Plug_Input2_Pin());
+openlcb::ConfiguredProducer producer_plug3(
+    stack.node(), cfg.seg().plug_inputs().entry<2>(), Plug_Input3_Pin());
+openlcb::ConfiguredProducer producer_plug4(
+    stack.node(), cfg.seg().plug_inputs().entry<3>(), Plug_Input4_Pin());
+openlcb::ConfiguredProducer producer_plug5(
+    stack.node(), cfg.seg().plug_inputs().entry<4>(), Plug_Input5_Pin());
+openlcb::ConfiguredProducer producer_plug6(
+    stack.node(), cfg.seg().plug_inputs().entry<5>(), Plug_Input6_Pin());
+openlcb::ConfiguredProducer producer_plug7(
+    stack.node(), cfg.seg().plug_inputs().entry<6>(), Plug_Input7_Pin());
+openlcb::ConfiguredProducer producer_plug8(
+    stack.node(), cfg.seg().plug_inputs().entry<7>(), Plug_Input8_Pin());
+
+SignalEventHandler signal_event_handler(cfg, stack.node());
 
 /** Entry point to application.
  * @param argc number of command line arguments
@@ -142,15 +119,22 @@ int appl_main(int argc, char *argv[])
 {
     BusActivityBlinky activity_blinky(&stack);
 
+    CalculateLedDataFn = [&](volatile uint16_t* arr) {
+    	signal_event_handler.CopyValuesToArray(arr);
+    };
+
     // The producers need to be polled repeatedly for changes and to execute the
     // debouncing algorithm. This class instantiates a refreshloop and adds the two
     // producers to it.
-    openlcb::RefreshLoop loop(stack.node(), {&activity_blinky});
+    openlcb::RefreshLoop loop(stack.node(),
+    		{&activity_blinky,
+    		 producer_plug1.polling(), producer_plug2.polling(),
+    		 producer_plug3.polling(), producer_plug4.polling(),
+			 producer_plug5.polling(), producer_plug6.polling(),
+			 producer_plug7.polling(), producer_plug8.polling()});
     
     stack.check_version_and_factory_reset(
         cfg.seg().internal_config(), openlcb::CANONICAL_VERSION, false);
-
-    StartLEDData();
 
     // The necessary physical ports must be added to the stack.
     //

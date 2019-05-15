@@ -5,6 +5,7 @@
 #include "openlcb/ConfiguredProducer.hxx"
 #include "openlcb/ConfigRepresentation.hxx"
 #include "openlcb/MemoryConfig.hxx"
+#include "SignalConfig.hxx"
 
 namespace openlcb
 {
@@ -24,27 +25,20 @@ namespace openlcb
 /// - the ACDI memory space will contain this data.
 extern const SimpleNodeStaticValues SNIP_STATIC_DATA = {
     4,               "Dakota Szabo", "Signal Controller v1",
-    "STM32F091RCv1", "2019-05-11"};
-
-#define NUM_OUTPUTS 1
-
-/// Declares a repeated group of a given base group and number of repeats. The
-/// ProducerConfig and ConsumerConfig groups represent the configuration layout
-/// needed by the ConfiguredProducer and ConfiguredConsumer classes, and come
-/// from their respective hxx file.
-using AllConsumers = RepeatedGroup<ConsumerConfig, NUM_OUTPUTS>;
+    "STM32F091RCv1", "2019-05-12"};
 
 /// Modify this value every time the EEPROM needs to be cleared on the node
 /// after an update.
-static constexpr uint16_t CANONICAL_VERSION = 0x184d;
+static constexpr uint16_t CANONICAL_VERSION = 0x184a;
+
+using InputConfigs = openlcb::RepeatedGroup<openlcb::ProducerConfig, 8>;
 
 /// Defines the main segment in the configuration CDI. This is laid out at
 /// origin 128 to give space for the ACDI user data at the beginning.
-CDI_GROUP(IoBoardSegment, Segment(MemoryConfigDefs::SPACE_CONFIG), Offset(128));
-/// Each entry declares the name of the current entry, then the type and then
-/// optional arguments list.
+CDI_GROUP(MainSegment, Segment(MemoryConfigDefs::SPACE_CONFIG), Offset(128));
 CDI_GROUP_ENTRY(internal_config, InternalConfigData);
-CDI_GROUP_ENTRY(consumers, AllConsumers, Name("Output LEDs"));
+CDI_GROUP_ENTRY(signal_config, signal_controller::SignalConfigWrapper);
+CDI_GROUP_ENTRY(plug_inputs, InputConfigs, Name("Plug Inputs"));
 CDI_GROUP_END();
 
 /// This segment is only needed temporarily until there is program code to set
@@ -66,7 +60,7 @@ CDI_GROUP_ENTRY(acdi, Acdi);
 /// space. UserInfoSegment is defined in the system header.
 CDI_GROUP_ENTRY(userinfo, UserInfoSegment);
 /// Adds the main configuration segment.
-CDI_GROUP_ENTRY(seg, IoBoardSegment);
+CDI_GROUP_ENTRY(seg, MainSegment);
 /// Adds the versioning segment.
 CDI_GROUP_ENTRY(version, VersionSeg);
 CDI_GROUP_END();

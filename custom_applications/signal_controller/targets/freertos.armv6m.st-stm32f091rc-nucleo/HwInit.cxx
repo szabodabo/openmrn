@@ -50,6 +50,7 @@
 #include "Stm32EEPROMEmulation.hxx"
 #include "Stm32PWM.hxx"
 #include "hardware.hxx"
+#include "AnimatedLamp.hxx"
 
 /** override stdin */
 const char *STDIN_DEVICE = "/dev/ser0";
@@ -75,6 +76,9 @@ static SPI_HandleTypeDef hspi1;
 volatile static uint16_t LedDriverData[24];
 static DMA_HandleTypeDef hdma_led_tx;
 static TIM_HandleTypeDef htim6;
+
+void NoOpFillData(volatile uint16_t* data) {}
+std::function<void(volatile uint16_t* data)> CalculateLedDataFn = NoOpFillData;
 
 extern "C" {
 
@@ -294,40 +298,23 @@ void hw_preinit(void)
 	HAL_NVIC_EnableIRQ(TIM6_IRQn);
 	HAL_TIM_Base_Init(&htim6);
 	HAL_TIM_Base_Start_IT(&htim6);
+
+
+
+	LedDriver_BLANK_Pin::set(0);
 }
 
 void dma_ch2_3_dma2_ch1_2_interrupt_handler() {
 	HAL_DMA_IRQHandler(hspi1.hdmatx);
 }
 
-volatile static uint32_t CURRENT_ANIM_TICK = 0;
-#define NUM_TICKS_IN_CYCLE 2000
-
 void AnimateLEDs() {
 	if (HAL_SPI_GetState(&hspi1) > HAL_SPI_STATE_READY) {
 		return;
 	}
 
-	if (++CURRENT_ANIM_TICK > NUM_TICKS_IN_CYCLE) {
-		CURRENT_ANIM_TICK = 0;
-	}
-	const double progress =  (double) CURRENT_ANIM_TICK / (double) NUM_TICKS_IN_CYCLE;
-	//const double progress = (CURRENT_ANIM_TICK*2 > NUM_TICKS_IN_CYCLE) ? 1.0 : 0.0;
+	CalculateLedDataFn(LedDriverData);
 
-	for (int i = 0; i < 24; i++) {
-		// todo: should be config
-		uint16_t bright = 0;
-		if (i % 3 == 0) {
-			bright = 300;
-		} else if (i % 3 == 1) {
-			bright = 1200;
-		} else {
-			bright = 500;
-		}
-
-		LedDriverData[i] = (double) bright * progress;
-		//LedDriverData[i] = 1000;
-	}
 	if (HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*)&LedDriverData, 24) != HAL_OK) {
 		HASSERT(0);
 	}
@@ -340,21 +327,7 @@ void timer6_dac_interrupt_handler() {
 
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef* hspi) {
 	LedDriver_XLAT_Pin::set(1);
-	//for (volatile uint8_t t=0; t < 30; t++);
 	LedDriver_XLAT_Pin::set(0);
-}
-
-/*
- * LED Update Strategy:
- * - Continuous DMA writes buffered LED GS info to SPI.
- * - At 100Hz, recalculate animation data and write into DMA buffer.
- */
-
-void StartLEDData() {
-
-
-	LedDriver_BLANK_Pin::set(0);
-	return;
 }
 
 }
