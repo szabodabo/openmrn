@@ -38,22 +38,24 @@ CDI_GROUP(HeadAppearance, Name("Signal Head Appearance"));
 
 CDI_GROUP_ENTRY(
 		green_brightness, openlcb::Uint8ConfigEntry,
-		Default(100), Max(100), Min(0),
+		Default(7), Max(100), Min(0),
 		Name("Green Brightness"),
 		Description("Brightness percentage of Green lamp, 0-100"));
 CDI_GROUP_ENTRY(
 		yellow_brightness, openlcb::Uint8ConfigEntry,
-		Default(100), Max(100), Min(0),
+		Default(25), Max(100), Min(0),
 		Name("Yellow Brightness"),
 		Description("Brightness percentage of Yellow lamp, 0-100"));
 CDI_GROUP_ENTRY(
 		red_brightness, openlcb::Uint8ConfigEntry,
-		Default(100), Max(100), Min(0),
+		Default(20), Max(100), Min(0),
 		Name("Red Brightness"),
 		Description("Brightness percentage of Red lamp, 0-100"));
 
 CDI_GROUP_ENTRY(lamp_style, openlcb::Uint8ConfigEntry, Default(1), Min(0), Max(1),
-    Name("Lamp style"), Description("0 for LED, 1 for incandescent."));
+    Name("Lamp Style"), Description("0 for LED, 1 for incandescent."));
+CDI_GROUP_ENTRY(lamp_jitter, openlcb::Uint8ConfigEntry, Default(32), Min(0), Max(100),
+    Name("Jitter Percentage"), Description("Lamp effect randomness (%, 0-100)."));
 
 CDI_GROUP_END(); // HeadAppearance
 

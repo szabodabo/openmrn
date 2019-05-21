@@ -4,111 +4,127 @@
 #include <math.h>
 #include <stdlib.h>
 
-class AbstractLamp {
+#define LED_JITTER true
+
+class AbstractAnimatedLamp {
 public:
-	// TODO: Looks like this fn only computes flash animations.
-	// Steady on/dark should be implemented better.
-	virtual uint16_t GetValue_1ms() = 0;
-	void SetMaxBrightness(uint16_t b) {
-		max_brightness_ = b;
+	AbstractAnimatedLamp(double max_brightness_ratio, double jitter_ratio)
+		: max_brightness_ratio_(max_brightness_ratio),
+		  jitter_factor_(jitter_ratio) {}
+
+	enum Workflow {
+		SOLID_ON = 1,
+		SOLID_OFF,
+		FLASHING,
+	};
+
+	void Poll_1khz() {
+		++current_state_elapsed_ms_;
+		Poll_1khz_Internal();
 	}
 
-	uint16_t GetMaxBrightness() {
-		return max_brightness_;
+	virtual void Poll_1khz_Internal() = 0;
+
+	uint16_t GetScaledValue(uint16_t scale_max) {
+		return value_ * (double) scale_max;
 	}
 
-	void SetValue(uint16_t val) {
-		value_ = val;
+	void SetWorkflow(Workflow new_workflow) {
+		workflow_ = new_workflow;
 	}
 
-	void SetFlashing(bool f) {
-		is_flashing_ = f;
-	}
-
-	bool IsFlashing() { return is_flashing_; }
 protected:
-	uint16_t max_brightness_ = 0;
-	bool is_flashing_ = false;
-	uint16_t value_ = 0;
+	void SetState(int new_state, uint32_t new_state_duration_ms) {
+		state_ = new_state;
+		current_state_elapsed_ms_ = 0;
+#if LED_JITTER
+		const uint16_t max_jitter_ms = new_state_duration_ms*jitter_factor_;
+		const int16_t jitter_ms = (rand() % max_jitter_ms) - max_jitter_ms/2;
+		current_state_duration_ms_ = new_state_duration_ms + jitter_ms;
+#else
+		current_state_duration_ms_ = new_state_duration_ms;
+#endif
+	}
+
+	int state_ = 0;
+	Workflow workflow_ = Workflow::SOLID_ON;
+	uint32_t current_state_elapsed_ms_ = 0;
+	uint32_t current_state_duration_ms_ = 500;
+	double value_ = 0.0;
+	double max_brightness_ratio_ = 1.0;
+	double jitter_factor_ = 0.0;
 };
 
-#define LED_DURATION_MS 900
-
-class LedLamp : public AbstractLamp {
+class AnimatedLedLamp : public AbstractAnimatedLamp {
 public:
-	uint16_t GetValue_1ms() override {
-		if (!is_flashing_) { return value_; }
-
-		const uint16_t max_jitter_ms = LED_DURATION_MS/2.5;
-		const int16_t jitter_ms = (rand() % max_jitter_ms) - max_jitter_ms/2;
-		const uint16_t duration_ms = LED_DURATION_MS + jitter_ms;
-
-		elapsed_millis_in_state_++;
-
-		if (value_ == 0 && elapsed_millis_in_state_ > duration_ms) {
-			value_ = max_brightness_;
-			elapsed_millis_in_state_ = 0;
-		} else if (value_ > 0 && elapsed_millis_in_state_ > duration_ms) {
-			value_ = 0;
-			elapsed_millis_in_state_ = 0;
+	AnimatedLedLamp(double max_brightness_ratio, double jitter_ratio)
+			: AbstractAnimatedLamp(max_brightness_ratio, jitter_ratio) {}
+	virtual void Poll_1khz_Internal() override {
+		if (workflow_ == Workflow::SOLID_ON && state_ == STATE_ON) {
+			return;
+		} else if (workflow_ == Workflow::SOLID_OFF && state_ == STATE_OFF) {
+			return;
 		}
-		return value_;
+
+		// We must be waiting for the current state to expire, then flip.
+		if (current_state_elapsed_ms_ > current_state_duration_ms_) {
+			SetState(state_ == STATE_ON ? STATE_OFF : STATE_ON, LED_DURATION_MS);
+		}
+	}
+
+protected:
+	void SetState(int state, uint32_t duration) {
+		value_ = state == STATE_ON ? max_brightness_ratio_ : 0;
+		AbstractAnimatedLamp::SetState(state, duration);
 	}
 private:
-	uint32_t elapsed_millis_in_state_ = 0;
+	static const int STATE_OFF = 0;
+	static const int STATE_ON = 1;
+	static const uint32_t LED_DURATION_MS = 800;
 };
 
-class IncandescentLamp : public AbstractLamp {
+class AnimatedIncandescentLamp : public AbstractAnimatedLamp {
 public:
-	uint16_t GetValue_1ms() override {
-		uint16_t state_duration_ms_ = 0;
-		State next = TURNING_ON;
-		if (state_ == TURNING_ON) {
-			state_duration_ms_ = 100;
-			next = WAITING_ON;
-		} else if (state_ == WAITING_ON) {
-			if (!is_flashing_) {
-				return value_;
-			}
-			state_duration_ms_ = 400;
-			next = TURNING_OFF;
-		} else if (state_ == TURNING_OFF) {
-			state_duration_ms_ = 70;
-			next = WAITING_OFF;
-		} else if (state_ == WAITING_OFF) {
-			if (!is_flashing_) {
-				return value_;
-			}
-			state_duration_ms_ = 400;
-			next = TURNING_ON;
+	AnimatedIncandescentLamp(double max_brightness_ratio, double jitter_ratio)
+		: AbstractAnimatedLamp(max_brightness_ratio, jitter_ratio) {}
+
+	virtual void Poll_1khz_Internal() override {
+		if (workflow_ == Workflow::SOLID_ON && state_ == STATE_WAITING_ON) {
+			return;
+		} else if (workflow_ == Workflow::SOLID_OFF && state_ == STATE_WAITING_OFF) {
+			return;
 		}
 
-		if (++elapsed_millis_in_state_ > state_duration_ms_) {
-			elapsed_millis_in_state_ = 0;
-			state_ = next;
+		if (current_state_elapsed_ms_ > current_state_duration_ms_) {
+			if (state_ == STATE_WAITING_OFF) {
+				SetState(STATE_TURNING_ON, 135);
+			} else if (state_ == STATE_TURNING_ON) {
+				SetState(STATE_WAITING_ON, 400);
+			} else if (state_ == STATE_WAITING_ON) {
+				SetState(STATE_TURNING_OFF, 100);
+			} else if (state_ == STATE_TURNING_OFF) {
+				SetState(STATE_WAITING_OFF, 400);
+			} else {
+				HASSERT(0);
+			}
+			return;
 		}
 
-		if (state_ == WAITING_ON || state_ == WAITING_OFF) {
-			return value_;
+		if (state_ == STATE_WAITING_OFF || state_ == STATE_WAITING_ON) {
+			return;
 		}
 
 		// Use a parabola to make brightness fade appear linear.
-		const double coef = (double) max_brightness_ / pow(state_duration_ms_, 2);
-		const double x = (state_ == TURNING_ON ? elapsed_millis_in_state_ : state_duration_ms_-elapsed_millis_in_state_);
-
-		value_ = coef * pow(x, 2);
-		return value_;
+		const double coef = (double) 10000 * max_brightness_ratio_ / (double) pow(current_state_duration_ms_, 2);
+		const double x = state_ == STATE_TURNING_ON ? current_state_elapsed_ms_ : (current_state_duration_ms_-current_state_elapsed_ms_);
+		value_ = (coef * pow(x, 2)) / (double) 10000;
 	}
-private:
-	enum State {
-		TURNING_ON = 1,
-		WAITING_ON,
-		TURNING_OFF,
-		WAITING_OFF,
-	};
 
-	State state_ = WAITING_OFF;
-	uint32_t elapsed_millis_in_state_ = 0;
+private:
+	static const int STATE_WAITING_OFF = 0;
+	static const int STATE_TURNING_ON = 1;
+	static const int STATE_WAITING_ON = 2;
+	static const int STATE_TURNING_OFF = 3;
 };
 
 #endif // _SIGNAL_CONTROLLER_ANIMATED_LAMP_H

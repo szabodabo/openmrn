@@ -6,7 +6,7 @@
 
 struct SignalLampContainer {
 	openlcb::EventId event_on_solid, event_on_flashing;
-	std::unique_ptr<AbstractLamp> lamp;
+	std::unique_ptr<AbstractAnimatedLamp> lamp;
 };
 
 class SignalHeadContainer {
@@ -15,12 +15,9 @@ public:
 	openlcb::EventId event_dark;
 
 	void TurnAllOff() {
-		red.lamp->SetFlashing(false);
-		red.lamp->SetValue(0);
-		yellow.lamp->SetFlashing(false);
-		yellow.lamp->SetValue(0);
-		green.lamp->SetFlashing(false);
-		green.lamp->SetValue(0);
+		red.lamp->SetWorkflow(AbstractAnimatedLamp::Workflow::SOLID_OFF);
+		yellow.lamp->SetWorkflow(AbstractAnimatedLamp::Workflow::SOLID_OFF);
+		green.lamp->SetWorkflow(AbstractAnimatedLamp::Workflow::SOLID_OFF);
 	}
 };
 
@@ -39,12 +36,9 @@ public:
 	SignalEventHandler(const openlcb::ConfigDef config,
 			openlcb::Node* node) : config_(config), node_(node) {
 		for (int i = 0; i < NUM_SIGNAL_HEADS; i++) {
-			heads_[i].red.lamp.reset(new IncandescentLamp());
-			heads_[i].red.lamp->SetMaxBrightness(300);
-			heads_[i].yellow.lamp.reset(new IncandescentLamp());
-			heads_[i].yellow.lamp->SetMaxBrightness(1200);
-			heads_[i].green.lamp.reset(new IncandescentLamp());
-			heads_[i].green.lamp->SetMaxBrightness(500);
+			heads_[i].red.lamp.reset(new AnimatedLedLamp(4000, 0));
+			heads_[i].yellow.lamp.reset(new AnimatedLedLamp(4000, 0));
+			heads_[i].green.lamp.reset(new AnimatedLedLamp(4000, 0));
 		}
 	}
 
@@ -64,37 +58,30 @@ public:
 			//    SH1 in config is SH8 on chip.
 			const signal_controller::SignalHeadConfig head = signal_wrapper.heads().entry(NUM_SIGNAL_HEADS-i-1);
 
+			const double jitter_ratio = (double)head.appearance().lamp_jitter().read(fd) / 100.0d;
+			const double red_brightness_ratio_max = (double)head.appearance().red_brightness().read(fd) / 100.0d;
+			const double yellow_brightness_ratio_max = (double)head.appearance().yellow_brightness().read(fd) / 100.0d;
+			const double green_brightness_ratio_max = (double)head.appearance().green_brightness().read(fd) / 100.0d;
+
 			// TODO: signal aspects are forgotten on apply_config.
 			if (head.appearance().lamp_style().read(fd) == 1) {
-				heads_[i].red.lamp.reset(new IncandescentLamp());
-				heads_[i].yellow.lamp.reset(new IncandescentLamp());
-				heads_[i].green.lamp.reset(new IncandescentLamp());
+				heads_[i].red.lamp.reset(new AnimatedIncandescentLamp(red_brightness_ratio_max, jitter_ratio));
+				heads_[i].yellow.lamp.reset(new AnimatedIncandescentLamp(yellow_brightness_ratio_max, jitter_ratio));
+				heads_[i].green.lamp.reset(new AnimatedIncandescentLamp(green_brightness_ratio_max, jitter_ratio));
 			} else {
-				heads_[i].red.lamp.reset(new LedLamp());
-				heads_[i].yellow.lamp.reset(new LedLamp());
-				heads_[i].green.lamp.reset(new LedLamp());
+				heads_[i].red.lamp.reset(new AnimatedLedLamp(red_brightness_ratio_max, jitter_ratio));
+				heads_[i].yellow.lamp.reset(new AnimatedLedLamp(yellow_brightness_ratio_max, jitter_ratio));
+				heads_[i].green.lamp.reset(new AnimatedLedLamp(green_brightness_ratio_max, jitter_ratio));
 			}
 
 			heads_[i].red.event_on_solid = head.events().red_event().read(fd);
 			heads_[i].red.event_on_flashing = head.events().flash_red_event().read(fd);
-			heads_[i].red.lamp->SetMaxBrightness(
-					ScaleBrightnessPct(head.appearance().red_brightness().read(fd)));
 
 			heads_[i].yellow.event_on_solid = head.events().yellow_event().read(fd);
 			heads_[i].yellow.event_on_flashing = head.events().flash_yellow_event().read(fd);
-			heads_[i].yellow.lamp->SetMaxBrightness(
-					ScaleBrightnessPct(head.appearance().yellow_brightness().read(fd)));
 
 			heads_[i].green.event_on_solid = head.events().green_event().read(fd);
 			heads_[i].green.event_on_flashing = head.events().flash_green_event().read(fd);
-			heads_[i].green.lamp->SetMaxBrightness(
-					ScaleBrightnessPct(head.appearance().green_brightness().read(fd)));
-
-			if (initial_load) {
-				// TODO: initial aspect should be special somehow.
-				heads_[i].red.lamp->SetFlashing(true);
-				heads_[i].red.lamp->SetValue(heads_[i].red.lamp->GetMaxBrightness());
-			}
 
 			heads_[i].event_dark = head.events().dark_event().read(fd);
 
@@ -185,8 +172,7 @@ public:
 				if (envelope->event == l->event_on_solid
 				 || envelope->event == l->event_on_flashing) {
 					head.TurnAllOff();
-					l->lamp->SetFlashing(envelope->event == l->event_on_flashing);
-					l->lamp->SetValue(l->lamp->GetMaxBrightness());
+					l->lamp->SetWorkflow(envelope->event == l->event_on_flashing ? AbstractAnimatedLamp::Workflow::FLASHING : AbstractAnimatedLamp::Workflow::SOLID_ON);
 					return;
 				}
 			}
@@ -204,6 +190,7 @@ public:
 			CDI_FACTORY_RESET(head.appearance().yellow_brightness);
 			CDI_FACTORY_RESET(head.appearance().green_brightness);
 			CDI_FACTORY_RESET(head.appearance().lamp_style);
+			CDI_FACTORY_RESET(head.appearance().lamp_jitter);
 			head.name().write(fd, "");
 		}
 	}
@@ -211,10 +198,16 @@ public:
 	void CopyValuesToArray(volatile uint16_t* array) {
 		for (int headIdx = 0; headIdx < NUM_SIGNAL_HEADS; headIdx++) {
 			SignalHeadContainer& head = heads_[headIdx];
+
+			head.red.lamp->Poll_1khz();
+			head.yellow.lamp->Poll_1khz();
+			head.green.lamp->Poll_1khz();
+
 			const int greenIdx = headIdx*3;
-			array[greenIdx] = head.green.lamp->GetValue_1ms();
-			array[greenIdx+1] = head.yellow.lamp->GetValue_1ms();
-			array[greenIdx+2] = head.red.lamp->GetValue_1ms();
+
+			array[greenIdx] = head.green.lamp->GetScaledValue(4000);
+			array[greenIdx+1] = head.yellow.lamp->GetScaledValue(4000);
+			array[greenIdx+2] = head.red.lamp->GetScaledValue(4000);
 		}
 	}
 
