@@ -1,45 +1,33 @@
 #ifndef _APPLICATIONS_IO_BOARD_TARGET_CONFIG_HXX_
 #define _APPLICATIONS_IO_BOARD_TARGET_CONFIG_HXX_
 
+#include "openlcb/ConfigRepresentation.hxx"
 #include "openlcb/ConfiguredConsumer.hxx"
 #include "openlcb/ConfiguredProducer.hxx"
-#include "openlcb/ConfigRepresentation.hxx"
 #include "openlcb/MemoryConfig.hxx"
-#include "SignalConfig.hxx"
-#include "InputPinConfig.hxx"
+#include "openlcb/ServoConsumerConfig.hxx"
+#include "CrossingControllerConfig.hxx"
 
 namespace openlcb
 {
 
-/// Defines the identification information for the node. The arguments are:
-///
-/// - 4 (version info, always 4 by the standard
-/// - Manufacturer name
-/// - Model name
-/// - Hardware version
-/// - Software version
-///
-/// This data will be used for all purposes of the identification:
-///
-/// - the generated cdi.xml will include this data
-/// - the Simple Node Ident Info Protocol will return this data
-/// - the ACDI memory space will contain this data.
 extern const SimpleNodeStaticValues SNIP_STATIC_DATA = {
-    4,               "Dakota Szabo", "Signal Controller v1",
-    "STM32F091RCv1", "2019-05-25"};
+    4,                           // 4 (version info, always 4 by the standard
+    "Dakota Szabo",              // Manufacturer name
+    "Grade Crossing Controller", // Model name
+    "STM32F091RCv1",          // Hardware version
+    "OpenMRN 2019-06"            // Software version
+};
 
 /// Modify this value every time the EEPROM needs to be cleared on the node
 /// after an update.
-static constexpr uint16_t CANONICAL_VERSION = 0x1800;
-
-using InputConfigs = openlcb::RepeatedGroup<signal_controller::InputPinConfig, 8>;
+static constexpr uint16_t CANONICAL_VERSION = 0x184c;
 
 /// Defines the main segment in the configuration CDI. This is laid out at
 /// origin 128 to give space for the ACDI user data at the beginning.
-CDI_GROUP(MainSegment, Segment(MemoryConfigDefs::SPACE_CONFIG), Offset(128));
+CDI_GROUP(IoBoardSegment, Segment(MemoryConfigDefs::SPACE_CONFIG), Offset(128));
 CDI_GROUP_ENTRY(internal_config, InternalConfigData);
-CDI_GROUP_ENTRY(signal_config, signal_controller::SignalConfigWrapper);
-CDI_GROUP_ENTRY(plug_inputs, InputConfigs, Name("Plug Inputs"), RepName("Input Pin"));
+CDI_GROUP_ENTRY(crossing_controller_config, crossing_controller::CrossingControllerConfig);
 CDI_GROUP_END();
 
 /// This segment is only needed temporarily until there is program code to set
@@ -61,7 +49,8 @@ CDI_GROUP_ENTRY(acdi, Acdi);
 /// space. UserInfoSegment is defined in the system header.
 CDI_GROUP_ENTRY(userinfo, UserInfoSegment);
 /// Adds the main configuration segment.
-CDI_GROUP_ENTRY(seg, MainSegment);
+CDI_GROUP_ENTRY(seg, IoBoardSegment);
+
 /// Adds the versioning segment.
 CDI_GROUP_ENTRY(version, VersionSeg);
 CDI_GROUP_END();

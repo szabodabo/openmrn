@@ -16,6 +16,7 @@ using ServoConsumers = openlcb::RepeatedGroup<openlcb::ServoConsumerConfig, 4>;
 
 CDI_GROUP(CrossingControllerConfig, Name("Crossing Controller Options"));
 
+// TODO: Tie these events to specific light detectors.
 CDI_GROUP_ENTRY(events_to_activate_crossing, ActivationEvents,
     Name("Activation Events"),
     Description("Events that, when seen, should activate the crossing."), RepName("Event"));
@@ -25,6 +26,8 @@ CDI_GROUP_ENTRY(active_event, openlcb::EventConfigEntry,
 CDI_GROUP_ENTRY(dormant_event, openlcb::EventConfigEntry,
     Name("Post-Deactivated Event"),
     Description("Event to publish after crossing becomes inactive."));
+
+// TODO: Remove servo eventIds from the config; don't reuse ServoConsumerConfig.
 CDI_GROUP_ENTRY(servo_consumers, ServoConsumers, Name("Servo outputs"),
     Description("Servo outputs for crossing gate arms."), RepName("Servo"));
 CDI_GROUP_ENTRY(crossbuck_brightness, openlcb::Uint8ConfigEntry, Default(100), Min(0),
@@ -37,9 +40,9 @@ CDI_GROUP_ENTRY(crossbuck_style, openlcb::Uint8ConfigEntry, Default(0), Min(0), 
     Name("Crossbuck lamp style"),
     Description("0 for LED, 1 for incandescent."));
 CDI_GROUP_ENTRY(false_alarm_timeout_seconds, openlcb::Uint16ConfigEntry, Default(60),
-    Min(5), Max(500), Name("Crossing gate timeout (seconds)"),
-    Description("How long to wait before the controller loses faith that a "
-                "train is actually approaching."));
+    Min(0), Max(500), Name("Crossing gate timeout (seconds)"),
+    Description("How many seconds to wait before the controller loses faith that a "
+                "train is actually approaching. 0 means no timeout."));
 CDI_GROUP_ENTRY(light_sensitivity, openlcb::Uint8ConfigEntry, Default(100), Min(0),
     Max(100), Name("Light detector sensitivity"),
     Description("How sensitive the light detectors are: 0 is least sensitive, "

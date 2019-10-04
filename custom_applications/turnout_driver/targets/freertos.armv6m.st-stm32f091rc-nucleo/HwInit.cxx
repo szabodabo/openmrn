@@ -91,13 +91,25 @@ PWM * const servo_channels[4] = { //
 
 extern uint8_t RELAY_DATA[];
 
-SPI_HandleTypeDef hspi1;
+#define RLY1_SET_GPIO_PORT GPIOB
+#define RLY1_SET_GPIO_PIN GPIO_PIN_4
+#define RLY1_RESET_GPIO_PORT GPIOB
+#define RLY1_RESET_GPIO_PIN GPIO_PIN_5
 
-#define RLY_LAT_GPIO_PORT GPIOB
-#define RLY_LAT_GPIO_PIN GPIO_PIN_5
+#define RLY2_SET_GPIO_PORT GPIOB
+#define RLY2_SET_GPIO_PIN GPIO_PIN_6
+#define RLY2_RESET_GPIO_PORT GPIOB
+#define RLY2_RESET_GPIO_PIN GPIO_PIN_7
 
-#define RLY_ENABLE_GPIO_PORT GPIOB
-#define RLY_ENABLE_GPIO_PIN GPIO_PIN_6
+#define RLY3_SET_GPIO_PORT GPIOB
+#define RLY3_SET_GPIO_PIN GPIO_PIN_0
+#define RLY3_RESET_GPIO_PORT GPIOB
+#define RLY3_RESET_GPIO_PIN GPIO_PIN_1
+
+#define RLY4_SET_GPIO_PORT GPIOB
+#define RLY4_SET_GPIO_PIN GPIO_PIN_11
+#define RLY4_RESET_GPIO_PORT GPIOB
+#define RLY4_RESET_GPIO_PIN GPIO_PIN_10
 
 extern "C" {
 
@@ -105,9 +117,45 @@ extern "C" {
 uint32_t blinker_pattern = 0;
 static uint32_t rest_pattern = 0;
 
+void DisableAllRelays(void) {
+	HAL_GPIO_WritePin(RLY1_SET_GPIO_PORT, RLY1_SET_GPIO_PIN, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(RLY1_RESET_GPIO_PORT, RLY1_RESET_GPIO_PIN, GPIO_PIN_RESET);
+
+	HAL_GPIO_WritePin(RLY2_SET_GPIO_PORT, RLY2_SET_GPIO_PIN, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(RLY2_RESET_GPIO_PORT, RLY2_RESET_GPIO_PIN, GPIO_PIN_RESET);
+
+	HAL_GPIO_WritePin(RLY3_SET_GPIO_PORT, RLY3_SET_GPIO_PIN, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(RLY3_RESET_GPIO_PORT, RLY3_RESET_GPIO_PIN, GPIO_PIN_RESET);
+
+	HAL_GPIO_WritePin(RLY4_SET_GPIO_PORT, RLY4_SET_GPIO_PIN, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(RLY4_RESET_GPIO_PORT, RLY4_RESET_GPIO_PIN, GPIO_PIN_RESET);
+}
+
+const uint16_t RELAY_PINS[8] = {
+	RLY1_SET_GPIO_PIN,
+	RLY1_RESET_GPIO_PIN,
+	RLY2_SET_GPIO_PIN,
+	RLY2_RESET_GPIO_PIN,
+	RLY3_SET_GPIO_PIN,
+	RLY3_RESET_GPIO_PIN,
+	RLY4_SET_GPIO_PIN,
+	RLY4_RESET_GPIO_PIN,
+};
+
+static GPIO_TypeDef* RELAY_PORTS[8] = {
+	RLY1_SET_GPIO_PORT,
+	RLY1_RESET_GPIO_PORT,
+	RLY2_SET_GPIO_PORT,
+	RLY2_RESET_GPIO_PORT,
+	RLY3_SET_GPIO_PORT,
+	RLY3_RESET_GPIO_PORT,
+	RLY4_SET_GPIO_PORT,
+	RLY4_RESET_GPIO_PORT,
+};
+
 void hw_set_to_safe(void)
 {
-	HAL_GPIO_WritePin(RLY_ENABLE_GPIO_PORT, RLY_ENABLE_GPIO_PIN, GPIO_PIN_RESET);
+	DisableAllRelays();
 }
 
 void resetblink(uint32_t pattern)
@@ -127,7 +175,6 @@ void setblink(uint32_t pattern)
 const uint8_t AHBPrescTable[16] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 6, 7, 8, 9};
 const uint8_t APBPrescTable[8]  = {0, 0, 0, 0, 1, 2, 3, 4};
 
-
 void timer14_interrupt_handler(void)
 {
     //
@@ -144,6 +191,26 @@ void timer14_interrupt_handler(void)
     {
         rest_pattern = blinker_pattern;
     }
+}
+
+// Called every 3ms.
+void timer7_interrupt_handler(void) {
+	TIM7->SR = ~TIM_IT_UPDATE;
+
+	DisableAllRelays();
+
+	for (uint8_t r = 0; r < 4; r++) {
+		const uint8_t relayBaseIdx = r*2;
+		const uint8_t is_set = RELAY_DATA[relayBaseIdx];
+		const uint8_t is_reset = RELAY_DATA[relayBaseIdx+1];
+		if (is_set) {
+			HAL_GPIO_WritePin(RELAY_PORTS[relayBaseIdx], RELAY_PINS[relayBaseIdx], GPIO_PIN_SET);
+			RELAY_DATA[relayBaseIdx] = 0;
+		} else if (is_reset) {
+			HAL_GPIO_WritePin(RELAY_PORTS[relayBaseIdx+1], RELAY_PINS[relayBaseIdx+1], GPIO_PIN_SET);
+			RELAY_DATA[relayBaseIdx+1] = 0;
+		}
+	}
 }
 
 void diewith(uint32_t pattern)
@@ -187,6 +254,8 @@ static void clock_setup(void)
     RCC->CFGR = (RCC->CFGR & (~RCC_CFGR_SW)) | RCC_CFGR_SW_PLL;
     while (!((RCC->CFGR & RCC_CFGR_SWS) == RCC_CFGR_SWS_PLL))
         ;
+
+
 }
 
 /** Initialize the processor hardware.
@@ -211,7 +280,7 @@ void hw_preinit(void)
     __HAL_RCC_CAN1_CLK_ENABLE();
     __HAL_RCC_TIM14_CLK_ENABLE();
     __HAL_RCC_TIM1_CLK_ENABLE();
-    __HAL_RCC_SPI1_CLK_ENABLE();
+    __HAL_RCC_TIM7_CLK_ENABLE();
 
     /* setup pinmux */
     GPIO_InitTypeDef gpio_init;
@@ -261,6 +330,19 @@ void hw_preinit(void)
     NVIC_SetPriority(TIM14_IRQn, 0);
     NVIC_EnableIRQ(TIM14_IRQn);
 
+    // Relay timer. Fire the update interrupt every 3ms.
+    memset(&TimHandle, 0, sizeof(TimHandle));
+    TimHandle.Instance = TIM7;
+    TimHandle.Init.Period = 30 - 1;
+    TimHandle.Init.Prescaler = configCPU_CLOCK_HZ / 10000;
+    TimHandle.Init.ClockDivision = 0;
+    TimHandle.Init.CounterMode = TIM_COUNTERMODE_UP;
+    TimHandle.Init.RepetitionCounter = 0;
+    HASSERT(HAL_TIM_Base_Init(&TimHandle) == HAL_OK);
+    HASSERT(HAL_TIM_Base_Start_IT(&TimHandle) == HAL_OK);
+    NVIC_SetPriority(TIM7_IRQn, 0);
+    NVIC_EnableIRQ(TIM7_IRQn);
+
     /*
       Switch servo pins to timer mode.
        
@@ -291,78 +373,27 @@ void hw_preinit(void)
     SERVO4_EN_Pin::set(1);
 
     /*
-      Relay Driver (frogs)
-
-      To operate: Latch low, write data (8..1), latch high
-    */
-
-    // Latch: PB5
+     * Relays: Coil operating time = ~2ms
+     */
     memset(&gpio_init, 0, sizeof(gpio_init));
-    gpio_init.Pin = RLY_LAT_GPIO_PIN;
-    gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
-    gpio_init.Pull = GPIO_PULLUP;
-    gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
-    HAL_GPIO_Init(RLY_LAT_GPIO_PORT, &gpio_init);
-	HAL_GPIO_WritePin(RLY_LAT_GPIO_PORT, RLY_LAT_GPIO_PIN, GPIO_PIN_SET);
+	gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
+	gpio_init.Pull = GPIO_PULLDOWN;
+	gpio_init.Speed = GPIO_SPEED_FREQ_LOW;
 
-    // Enable: PB6 
-    gpio_init.Pin = RLY_ENABLE_GPIO_PIN;
-    gpio_init.Pull = GPIO_PULLDOWN;
-    HAL_GPIO_Init(RLY_ENABLE_GPIO_PORT, &gpio_init);
-    HAL_GPIO_WritePin(RLY_ENABLE_GPIO_PORT, RLY_ENABLE_GPIO_PIN, GPIO_PIN_SET);
+	gpio_init.Pin = RLY3_SET_GPIO_PIN;
+	HAL_GPIO_Init(RLY3_SET_GPIO_PORT, &gpio_init);
+	gpio_init.Pin = RLY3_RESET_GPIO_PIN;
+	HAL_GPIO_Init(RLY3_RESET_GPIO_PORT, &gpio_init);
+	gpio_init.Pin = RLY4_SET_GPIO_PIN;
+	HAL_GPIO_Init(RLY4_SET_GPIO_PORT, &gpio_init);
+	gpio_init.Pin = RLY4_RESET_GPIO_PIN;
+	HAL_GPIO_Init(RLY4_RESET_GPIO_PORT, &gpio_init);
 
-    // nFault: PB7
-    gpio_init.Pin = GPIO_PIN_7;
-    gpio_init.Mode = GPIO_MODE_INPUT;
-    gpio_init.Pull = GPIO_PULLUP;
-    HAL_GPIO_Init(GPIOB, &gpio_init);
+	HAL_GPIO_WritePin(RLY3_SET_GPIO_PORT, RLY3_SET_GPIO_PIN, GPIO_PIN_SET);
 
-    /*
-      SPI1_SCK: PA5
-      SPI1_MISO: PA6
-      SPI1_MOSI: PA7
-    */
-    memset(&gpio_init, 0, sizeof(gpio_init));
-    gpio_init.Pin = GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7;
-    gpio_init.Mode = GPIO_MODE_AF_PP;
-    gpio_init.Pull = GPIO_NOPULL;
-    gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
-    gpio_init.Alternate = GPIO_AF0_SPI1;
-    HAL_GPIO_Init(GPIOA, &gpio_init);
-
-    memset(&hspi1, 0, sizeof(hspi1));
-    hspi1.Instance = SPI1;
-    hspi1.Init.Mode = SPI_MODE_MASTER;
-    // Change if we want to read output data
-    hspi1.Init.Direction = SPI_DIRECTION_1LINE;
-    hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
-    hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-    hspi1.Init.NSS = SPI_NSS_SOFT;
-    hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
-    // client writes data as [01234567]
-    hspi1.Init.FirstBit = SPI_FIRSTBIT_LSB;  
-    hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
-    hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
-
-    if (HAL_SPI_DeInit(&hspi1) != HAL_OK) {
-        HASSERT(0);
-    }
-    if (HAL_SPI_Init(&hspi1) != HAL_OK) {
-        HASSERT(0);
-    }
-}
-
-void UpdateRelays() {
-	HAL_GPIO_WritePin(RLY_LAT_GPIO_PORT, RLY_LAT_GPIO_PIN, GPIO_PIN_RESET);
-	uint8_t tx_data = 0;
-	for (uint8_t i = 0; i < 8; i++) {
-		tx_data |= (RELAY_DATA[i] << i);
-	}
-	if (HAL_SPI_Transmit(&hspi1, &tx_data, 1, HAL_MAX_DELAY) != HAL_OK) {
-		HASSERT(0);
-	}
-	for (volatile uint8_t i = 0; i < 10; i++);
-	HAL_GPIO_WritePin(RLY_LAT_GPIO_PORT, RLY_LAT_GPIO_PIN, GPIO_PIN_SET);
+	// PORT_IN5 hack on PA15
+	gpio_init.Pin = GPIO_PIN_15;
+	HAL_GPIO_Init(GPIOA, &gpio_init);
 }
 
 }

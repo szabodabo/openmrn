@@ -61,8 +61,7 @@ OVERRIDE_CONST(gc_generate_newlines, 1);
 // thread. Useful tuning parameter in case the application runs out of memory.
 OVERRIDE_CONST(main_thread_stack_size, 1300);
 
-// Silicon Valley lines has 05 01 01 01 47 *.
-extern const openlcb::NodeID NODE_ID = 0x050101014702ULL;
+extern const openlcb::NodeID NODE_ID;
 
 // Sets up a comprehensive OpenLCB stack for a single virtual node. This stack
 // contains everything needed for a usual peripheral node -- all
@@ -89,22 +88,102 @@ static_assert(openlcb::CONFIG_FILE_SIZE <= 2048, "Need to adjust eeprom size");
 extern const char *const openlcb::SNIP_DYNAMIC_FILENAME =
     openlcb::CONFIG_FILENAME;
 
-openlcb::ConfiguredProducer producer_plug1(
-    stack.node(), cfg.seg().plug_inputs().entry<0>(), Plug_Input1_Pin());
-openlcb::ConfiguredProducer producer_plug2(
-    stack.node(), cfg.seg().plug_inputs().entry<1>(), Plug_Input2_Pin());
-openlcb::ConfiguredProducer producer_plug3(
-    stack.node(), cfg.seg().plug_inputs().entry<2>(), Plug_Input3_Pin());
-openlcb::ConfiguredProducer producer_plug4(
-    stack.node(), cfg.seg().plug_inputs().entry<3>(), Plug_Input4_Pin());
-openlcb::ConfiguredProducer producer_plug5(
-    stack.node(), cfg.seg().plug_inputs().entry<4>(), Plug_Input5_Pin());
-openlcb::ConfiguredProducer producer_plug6(
-    stack.node(), cfg.seg().plug_inputs().entry<5>(), Plug_Input6_Pin());
-openlcb::ConfiguredProducer producer_plug7(
-    stack.node(), cfg.seg().plug_inputs().entry<6>(), Plug_Input7_Pin());
-openlcb::ConfiguredProducer producer_plug8(
-    stack.node(), cfg.seg().plug_inputs().entry<7>(), Plug_Input8_Pin());
+class UpdatableEventHandler : public DefaultConfigUpdateListener,
+						      public openlcb::SimpleEventHandler {
+public:
+	UpdatableEventHandler(openlcb::Node* node)
+			: node_(node) {}
+
+	/**
+	 * If this Node consumes the given event, give an update to the bus
+	 * about its current status (VALID=active, INVALID=inactive, UNKNOWN).
+	 * If this Node does not consume this event, don't respond.
+	 */
+	void handle_identify_consumer(const EventRegistryEntry& entry,
+			EventReport* envelope, BarrierNotifiable* done) override {
+		return handle_identify_global(entry, envelope, done);
+	}
+
+	/**
+	 * If this Node produces the given event, give an update to the bus
+	 * about its current status (VALID=active, INVALID=inactive, UNKNOWN).
+	 * If this Node does not consume this event, don't respond.
+	 */
+	void handle_identify_producer(const EventRegistryEntry& entry,
+			EventReport* envelope, BarrierNotifiable* done) override {
+		return handle_identify_global(entry, envelope, done);
+	}
+
+protected:
+	inline bool addressed_to_someone_else(const EventReport* envelope) const {
+		return envelope->dst_node && envelope->dst_node != node_;
+	}
+
+	openlcb::Node* node_;
+};
+
+class SimplePinProducer : public DefaultConfigUpdateListener {
+public:
+	SimplePinProducer(openlcb::Node* node,
+					  const signal_controller::InputPinConfig config,
+					  const Gpio* gpio)
+			: node_(node), config_(config), pin_(gpio),
+			  producer_(QuiesceDebouncer::Options(3), node, 0, 0, gpio) {
+	}
+
+	virtual UpdateAction apply_configuration(int fd, bool initial_load,
+			BarrierNotifiable* done) override {
+		AutoNotify an(done);
+
+		openlcb::EventId event_hi, event_lo;
+		int pin_on_value = config_.pin_on_value().read(fd);
+
+		if (pin_on_value == 0) {
+			event_lo = config_.event_on().read(fd);
+			event_hi = config_.event_off().read(fd);
+		} else {
+			event_lo = config_.event_off().read(fd);
+			event_hi = config_.event_on().read(fd);
+		}
+
+		producer_.~PolledProducer();
+		new (&producer_) openlcb::PolledProducer<QuiesceDebouncer, openlcb::GPIOBit>(
+			QuiesceDebouncer::Options(3), node_, event_hi, event_lo, pin_);
+		return REINIT_NEEDED;
+	}
+
+	virtual void factory_reset(int fd) override {
+        config_.name().write(fd, "");
+		CDI_FACTORY_RESET(config_.pin_on_value);
+	}
+
+	openlcb::Polling* polling() {
+		return &producer_;
+	}
+
+private:
+	openlcb::Node* node_;
+    const signal_controller::InputPinConfig config_;
+    const Gpio* pin_;
+    openlcb::PolledProducer<QuiesceDebouncer, openlcb::GPIOBit> producer_;
+};
+
+SimplePinProducer producer_plug1(
+    stack.node(), cfg.seg().plug_inputs().entry<0>(), Plug_Input1_Pin::instance());
+SimplePinProducer producer_plug2(
+    stack.node(), cfg.seg().plug_inputs().entry<1>(), Plug_Input2_Pin::instance());
+SimplePinProducer producer_plug3(
+    stack.node(), cfg.seg().plug_inputs().entry<2>(), Plug_Input3_Pin::instance());
+SimplePinProducer producer_plug4(
+    stack.node(), cfg.seg().plug_inputs().entry<3>(), Plug_Input4_Pin::instance());
+SimplePinProducer producer_plug5(
+    stack.node(), cfg.seg().plug_inputs().entry<4>(), Plug_Input5_Pin::instance());
+SimplePinProducer producer_plug6(
+    stack.node(), cfg.seg().plug_inputs().entry<5>(), Plug_Input6_Pin::instance());
+SimplePinProducer producer_plug7(
+    stack.node(), cfg.seg().plug_inputs().entry<6>(), Plug_Input7_Pin::instance());
+SimplePinProducer producer_plug8(
+    stack.node(), cfg.seg().plug_inputs().entry<7>(), Plug_Input8_Pin::instance());
 
 SignalEventHandler signal_event_handler(cfg, stack.node());
 
@@ -127,7 +206,7 @@ int appl_main(int argc, char *argv[])
     openlcb::RefreshLoop loop(stack.node(),
     		{&activity_blinky,
     		 producer_plug1.polling(), producer_plug2.polling(),
-    		 producer_plug3.polling(), producer_plug4.polling(),
+			 producer_plug3.polling(), producer_plug4.polling(),
 			 producer_plug5.polling(), producer_plug6.polling(),
 			 producer_plug7.polling(), producer_plug8.polling()});
     

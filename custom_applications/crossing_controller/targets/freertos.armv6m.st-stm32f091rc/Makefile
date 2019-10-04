@@ -10,7 +10,6 @@ sh -c "if [ \"X`printenv OPENMRNPATH`\" != \"X\" ]; then printenv OPENMRNPATH; \
      else echo OPENMRNPATH not found; fi" \
 )
 
-# Find STM32CubeF0 libraries
 include $(OPENMRNPATH)/etc/stm32cubef0.mk
 
 LDFLAGSEXTRA += 
@@ -18,22 +17,13 @@ SYSLIBRARIESEXTRA += -lfreertos_drivers_stm32cubef091xc
 OBJEXTRA += 
 
 CFLAGS += -DSTM32F091xC
-CXXFLAGS += -DSTM32F091xC
-
+CXXFLAGS += -DSTM32F091xC -DNODE_NUMBER=$(NODE_NUMBER)
 OPENOCDARGS = -f board/st_nucleo_f0.cfg
 
-TARGET := freertos.armv6m
+export TARGET := freertos.armv6m
 include $(OPENMRNPATH)/etc/prog.mk
 
 include extract_node_uuid.mk
-CFLAGS += -DNODE_NUMBER=$(NODE_NUMBER)
-CXXFLAGS += -DNODE_NUMBER=$(NODE_NUMBER)
-
-# ifndef DEFAULT_ADDRESS
-# DEFAULT_ADDRESS=0x15
-# endif
-
-# include $(OPENMRNPATH)/etc/node_id.mk
 
 # How to use: make multibin ADDRESS=0x20 ADDRHIGH=0x45 NUM=3
 # starting address, high bits (user range), count
@@ -49,7 +39,11 @@ flash: $(EXECUTABLE)$(EXTENTION) $(EXECUTABLE).lst
 
 gdb:
 	@if ps ax -o comm | grep -q openocd ; then echo openocd already running. quit existing first. ; exit 1 ; fi
-	$(GDB) $(EXECUTABLE)$(EXTENTION) -ex "target remote | $(OPENOCDPATH)/openocd -c \"gdb_port pipe\" --search $(OPENOCDSCRIPTSPATH) $(OPENOCDARGS)" -ex "continue" # -ex "monitor reset halt"
+	$(GDB)-py $(EXECUTABLE)$(EXTENTION) -ex "target remote | $(OPENOCDPATH)/openocd -c \"gdb_port pipe\" --search $(OPENOCDSCRIPTSPATH) $(OPENOCDARGS)" -ex "continue" # -ex "monitor reset halt"
+
+gdbserver:
+	@if ps ax -o comm | grep -q openocd ; then echo openocd already running. quit existing first. ; exit 1 ; fi
+	gdbserver localhost:8000 $(EXECUTABLE)$(EXTENTION) --gdb-args "-ex 'target remote | $(OPENOCDPATH)/openocd -c \"gdb_port pipe\" --search $(OPENOCDSCRIPTSPATH) $(OPENOCDARGS)' -ex 'continue'"
 
 else
 

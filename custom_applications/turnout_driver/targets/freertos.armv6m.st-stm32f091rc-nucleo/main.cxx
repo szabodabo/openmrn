@@ -64,7 +64,7 @@ OVERRIDE_CONST(main_thread_stack_size, 1300);
 // Specifies the 48-bit OpenLCB node identifier. This must be unique for every
 // hardware manufactured, so in production this should be replaced by some
 // easily incrementable method.
-extern const openlcb::NodeID NODE_ID = 0x050101011816ULL;
+extern const openlcb::NodeID NODE_ID = 0x050101011819ULL;
 
 // Sets up a comprehensive OpenLCB stack for a single virtual node. This stack
 // contains everything needed for a usual peripheral node -- all
@@ -123,12 +123,14 @@ static_assert(openlcb::CONFIG_FILE_SIZE <= 300, "Need to adjust eeprom size");
 extern const char *const openlcb::SNIP_DYNAMIC_FILENAME =
     openlcb::CONFIG_FILENAME;
 
-class ServoAndRelayConsumer : public openlcb::ServoConsumer, public openlcb::SimpleEventHandler {
+class ServoAndRelayConsumer : public openlcb::SimpleEventHandler {
 public:
     ServoAndRelayConsumer(openlcb::Node *node, const openlcb::ServoConsumerConfig &cfg,
         const uint32_t pwmCountPerMs, PWM *pwm, uint8_t* relay_set, uint8_t* relay_reset)
-        : openlcb::ServoConsumer(node, cfg, pwmCountPerMs, pwm), cfg_(cfg), relay_set_bit_(relay_set), relay_reset_bit_(relay_reset) {
-    }
+        : /* openlcb::ServoConsumer(node, cfg, pwmCountPerMs, pwm), */
+		  cfg_(cfg),
+		  relay_set_bit_(relay_set),
+		  relay_reset_bit_(relay_reset) {}
 
     UpdateAction apply_configuration(int fd, bool initial_load, BarrierNotifiable* done) OVERRIDE {
         AutoNotify an(done);
@@ -146,14 +148,14 @@ public:
     	const openlcb::EventId srv_max = cfg_.event_rotate_max().read(fd);
 
     	openlcb::EventRegistry::instance()->register_handler(
-    	            openlcb::EventRegistryEntry(this, srv_min, /*user_arg=*/EVENT_SERVO_MIN), /*mask=*/0);
+			openlcb::EventRegistryEntry(this, srv_min, /*user_arg=*/EVENT_SERVO_MIN), /*mask=*/0);
     	openlcb::EventRegistry::instance()->register_handler(
-    	    	            openlcb::EventRegistryEntry(this, srv_max, /*user_arg=*/EVENT_SERVO_MAX), /*mask=*/0);
+			openlcb::EventRegistryEntry(this, srv_max, /*user_arg=*/EVENT_SERVO_MAX), /*mask=*/0);
 
-    	return openlcb::ServoConsumer::apply_configuration(fd, initial_load, done->new_child());
+    	return UPDATED;
+    	//return openlcb::ServoConsumer::apply_configuration(fd, initial_load, done->new_child());
     }
 
-    // TODO: confirm if this works in the startup case
     void handle_event_report(const EventRegistryEntry &registry_entry,
                              EventReport *event,
                              BarrierNotifiable *done) OVERRIDE {
@@ -161,11 +163,9 @@ public:
     	if (registry_entry.user_arg == EVENT_SERVO_MIN) {
     		*relay_set_bit_ = 0;
     		*relay_reset_bit_ = 1;
-    		UpdateRelays();
     	} else if (registry_entry.user_arg == EVENT_SERVO_MAX) {
     		*relay_set_bit_ = 1;
     		*relay_reset_bit_ = 0;
-    		UpdateRelays();
     	}
     }
 
@@ -183,6 +183,30 @@ private:
 		EVENT_SERVO_MAX = 2,
     };
 };
+
+class DefaultFieldResetter : public DefaultConfigUpdateListener {
+public:
+	DefaultFieldResetter(openlcb::ConfigDef config) : cfg_(config) {}
+
+	virtual void factory_reset(int fd) override {
+		cfg_.userinfo().name().write(fd, "Turnout Driver");
+		cfg_.userinfo().description().write(fd, "");
+		for (unsigned i = 0; i < cfg_.seg().servo_consumers().num_repeats(); i++) {
+			SERVOCONSUMERCONFIG_RESET(cfg_.seg().servo_consumers().entry(i));
+		}
+	}
+
+	virtual UpdateAction apply_configuration(int fd, bool initial_load,
+				BarrierNotifiable* done) override {
+		done->notify();
+		return UPDATED;
+	}
+
+private:
+	openlcb::ConfigDef cfg_;
+};
+
+DefaultFieldResetter resetter(cfg);
 
 extern uint8_t RELAY_DATA[];
 uint8_t RELAY_DATA[8] = {0, 0, 0, 0, 0, 0, 0, 0};
@@ -210,8 +234,8 @@ ServoAndRelayConsumer srv3(
 // segment 'seg', in which there is a repeated group 'consumers', and we assign
 // the individual entries to the individual consumers. Each consumer gets its
 // own GPIO pin.
-openlcb::ConfiguredConsumer consumer_green(
-    stack.node(), cfg.seg().consumers().entry<0>(), LED_GREEN_Pin());
+//openlcb::ConfiguredConsumer consumer_green(
+//    stack.node(), cfg.seg().consumers().entry<0>(), LED_GREEN_Pin());
 
 /** Entry point to application.
  * @param argc number of command line arguments
