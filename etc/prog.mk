@@ -82,6 +82,8 @@ endif
 DEPS += TOOLPATH
 MISSING_DEPS:=$(call find_missing_deps,$(DEPS))
 
+PYTHON := python2.7
+
 ifneq ($(MISSING_DEPS),)
 all docs clean veryclean tests mksubdirs: print_error_deps
 
@@ -110,7 +112,7 @@ all: $(EXECUTABLE)$(EXTENTION)
 
 .PHONY: FORCE
 Revision.hxxout: FORCE
-	$(OPENMRNPATH)/bin/revision.py $(REVISIONFLAGS) -t -i "$(GITREPOS)" -g "`$(CC) -dumpversion`"
+	$(PYTHON) $(OPENMRNPATH)/bin/revision.py $(REVISIONFLAGS) -t -i "$(GITREPOS)" -g "`$(CC) -dumpversion`"
 
 # This part detects whether we have a config.hxx defining CDI data and if yes,
 # then compiles it into an xml and object file.
@@ -168,7 +170,7 @@ endif
 # in the core target libraries.
 $(LIBDIR)/timestamp: $(LIBBUILDDEP) $(BUILDDIRS)
 ifdef FLOCKPATH
-	@$(FLOCKPATH)/flock $(OPENMRNPATH)/targets/$(TARGET) -c "if [ $< -ot $(LIBBUILDDEP) -o ! -f $(LIBBUILDDEP) ] ; then $(MAKE) -C $(OPENMRNPATH)/targets/$(TARGET) all ; else echo short-circuiting core target build ; fi"
+	@$(FLOCKPATH)/flock $(OPENMRNPATH)/targets/$(TARGET) -c "if [ $< -ot $(LIBBUILDDEP) -o ! -f $(LIBBUILDDEP) ] ; then $(MAKE) OPENMRNPATH=$(OPENMRNPATH) -C $(OPENMRNPATH)/targets/$(TARGET) all ; else echo short-circuiting core target build ; fi"
 else
 	@echo warning: no flock support. If you use make -jN then you can run into occasional compilation errors when multiple makes are progressing in the same directory. Usually re-running make solved them.
 	$(MAKE) -C $(OPENMRNPATH)/targets/$(TARGET) all
