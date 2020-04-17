@@ -37,6 +37,9 @@ INCLUDES += -I$(FREERTOSPATH)/Source/include \
 #ARCHOPTIMIZATION += -O3 -fno-strict-aliasing -fno-strength-reduce -fomit-frame-pointer
 ARCHOPTIMIZATION += -Os -fno-strict-aliasing -fno-strength-reduce -fomit-frame-pointer -fdata-sections -ffunction-sections
 
+# Include macros in debug symbols
+ARCHOPTIMIZATION += -gdwarf-2 -g3
+
 ARCHFLAGS = -g -MD -MP -mcpu=cortex-m3 -mthumb -mfloat-abi=soft
 
 ifdef DEBUG_MEMORY_USE
