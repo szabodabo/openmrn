@@ -41,7 +41,7 @@
 
 #if defined(STM32F072xB) || defined(STM32F091xC)
 #include "stm32f0xx_hal_gpio.h"
-#elif defined(STM32F103xB)
+#elif defined(STM32F103xB) || defined(STM32F103xE)
 #include "stm32f1xx_hal_gpio.h"
 #elif defined(STM32F303xC) || defined(STM32F303xE)
 #include "stm32f3xx_hal_gpio.h"

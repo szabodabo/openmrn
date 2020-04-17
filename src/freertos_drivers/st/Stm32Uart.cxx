@@ -25,7 +25,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  *
  * \file Stm32Uart.cxx
- * This file implements a UART device driver layer specific to STM32F0xx MCUs.
+ * This file implements a UART device driver layer specific to STM32 MCUs.
  *
  * @author Stuart W. Baker
  * @date 26 April 2015
@@ -35,7 +35,7 @@
 
 #if defined(STM32F072xB) || defined(STM32F091xC)
 #include "stm32f0xx_hal_cortex.h"
-#elif defined(STM32F103xB)
+#elif defined(STM32F103xB) || defined(STM32F103xE)
 #include "stm32f1xx_hal_cortex.h"
 #elif defined(STM32F303xC) || defined(STM32F303xE)
 #include "stm32f3xx_hal_cortex.h"
@@ -53,7 +53,7 @@ Stm32Uart *Stm32Uart::instances[2] = {NULL};
 #elif defined (STM32F070xB) || defined (STM32F071xB) || defined (STM32F072xB) \
    || defined (STM32F078xx)
 Stm32Uart *Stm32Uart::instances[4] = {NULL};
-#elif defined (STM32F303xC) || defined (STM32F303xE)
+#elif defined (STM32F103xE) || defined (STM32F303xC) || defined (STM32F303xE)
 Stm32Uart *Stm32Uart::instances[5] = {NULL};
 #define USART4 UART4
 #define USART5 UART5
@@ -61,6 +61,16 @@ Stm32Uart *Stm32Uart::instances[5] = {NULL};
 Stm32Uart *Stm32Uart::instances[6] = {NULL};
 #elif defined (STM32F091xC) || defined (STM32F098xx)
 Stm32Uart *Stm32Uart::instances[8] = {NULL};
+#else
+#error Dont know what STM32 chip you have.
+#endif
+
+#if defined (STM32F103xE)
+#define UARTHANDLE_RDR uartHandle.Instance->DR
+#define UARTHANDLE_TDR uartHandle.Instance->DR
+#else
+#define UARTHANDLE_RDR uartHandle.Instance->RDR
+#define UARTHANDLE_TDR uartHandle.Instance->TDR
 #endif
 
 /** Constructor.
@@ -101,7 +111,7 @@ Stm32Uart::Stm32Uart(const char *name, USART_TypeDef *base, IRQn_Type interrupt)
     {
         instances[4] = this;
     }
-#if !defined (STM32F303xC) && !defined(STM32F303xE)
+#if !defined (STM32F103xE) && !defined (STM32F303xC) && !defined (STM32F303xE)
     else if (base == USART6)
     {
         instances[5] = this;
@@ -149,7 +159,10 @@ void Stm32Uart::enable()
     uartHandle.Init.Parity     = UART_PARITY_NONE;
     uartHandle.Init.HwFlowCtl  = UART_HWCONTROL_NONE;
     uartHandle.Init.Mode       = UART_MODE_TX_RX;
+
+#if !defined (STM32F103xE)
     uartHandle.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+#endif
     
     HAL_UART_Init(&uartHandle);
     __HAL_UART_ENABLE_IT(&uartHandle, UART_IT_RXNE);
@@ -204,12 +217,37 @@ void Stm32Uart::tx_char()
 
         if (txBuf->get(&data, 1))
         {
-            uartHandle.Instance->TDR = data;
+            UARTHANDLE_TDR = data;
             __HAL_UART_ENABLE_IT(&uartHandle, UART_IT_TXE);
             txBuf->signal_condition();
         }
     }
 }
+
+#ifdef STM32F103xE
+#define __HAL_UART_GET_IT __HAL_UART_GET_FLAG
+#define __HAL_UART_CLEAR_IT __HAL_UART_CLEAR_FLAG
+
+#define UART_IT_ORE UART_FLAG_ORE
+#define UART_CLEAR_OREF UART_FLAG_ORE
+
+#define UART_IT_NE UART_FLAG_NE
+#define UART_CLEAR_NEF UART_FLAG_NE
+
+#define UART_IT_FE UART_FLAG_FE
+#define UART_CLEAR_FEF UART_FLAG_FE
+
+// Don't know why, but F1 HAL defines both
+// UART_IT_TXE and UART_FLAG_TXE, and they are different.
+#define UART_TXE(handle) __HAL_UART_GET_FLAG(handle, UART_FLAG_TXE)
+#define UART_RXNE(handle) __HAL_UART_GET_FLAG(handle, UART_FLAG_RXNE)
+
+#else
+#define UART_TXE(handle) __HAL_UART_GET_IT(handle, UART_IT_TXE)
+#define UART_RXNE(handle) __HAL_UART_GET_IT(handle, UART_IT_RXNE)
+#endif
+
+
 
 /** Common interrupt handler for all UART devices.
  */
@@ -231,19 +269,21 @@ void Stm32Uart::interrupt_handler()
         /* framing error */
         __HAL_UART_CLEAR_IT(&uartHandle, UART_CLEAR_FEF);
     }
-    while (__HAL_UART_GET_IT(&uartHandle, UART_IT_RXNE))
+
+    while (UART_RXNE(&uartHandle))
     {
         /** @todo (Stuart Baker) optimization opportunity by getting a write
          * pointer to fill the fifo and then advance the buffer when finished
          */
-        uint8_t data = uartHandle.Instance->RDR;
+        uint8_t data = UARTHANDLE_RDR;
         if (rxBuf->put(&data, 1) == 0)
         {
             ++overrunCount;
         }
         rxBuf->signal_condition_from_isr();
     }
-    while (__HAL_UART_GET_IT(&uartHandle, UART_IT_TXE) &&
+
+    while (UART_TXE(&uartHandle) &&
            __HAL_UART_GET_IT_SOURCE(&uartHandle, UART_IT_TXE))
     {
         /** @todo (Stuart Baker) optimization opportunity by getting a read
@@ -252,7 +292,7 @@ void Stm32Uart::interrupt_handler()
         uint8_t data;
         if (txBuf->get(&data, 1) != 0)
         {
-            uartHandle.Instance->TDR = data;
+            UARTHANDLE_TDR = data;
             txBuf->signal_condition_from_isr();
         }
         else
@@ -307,7 +347,7 @@ void uart2_interrupt_handler(void)
     Stm32Uart::interrupt_handler(1);
 }
 
-#if defined (STM32F303xC)
+#if defined(STM32F103xE) || defined (STM32F303xC)
 /** UART3 interrupt handler.
  */
 void uart3_interrupt_handler(void)
