@@ -1,1 +1,0 @@
-../../../crossing_controller/targets/freertos.armv6m.st-stm32f091rc/extract_node_uuid.mk

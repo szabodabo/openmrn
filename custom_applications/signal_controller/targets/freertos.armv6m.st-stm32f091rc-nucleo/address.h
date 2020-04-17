@@ -1,1 +1,0 @@
-#define NODEID_LOW_BITS 0x15
