@@ -21,18 +21,21 @@ CDI_GROUP_ENTRY(event_rotate_max, EventConfigEntry, //
     "stop point of the servo, as a percentage: generally 0-100. "              \
     "May be under/over-driven by setting a percentage value "                  \
     "of -99 to 200, respectively."
-CDI_GROUP_ENTRY(servo_min_percent, Int16ConfigEntry, Default(0), Min(-99),
+CDI_GROUP_ENTRY(servo_min_percent, Int16ConfigEntry, Default(45), Min(-99),
     Max(200), Name("Servo Minimum Stop Point Percentage"),
     Description("Low-end " SERVO_DESCRIPTION_SUFFIX));
-CDI_GROUP_ENTRY(servo_max_percent, Int16ConfigEntry, Default(100), Min(-99),
+CDI_GROUP_ENTRY(servo_max_percent, Int16ConfigEntry, Default(55), Min(-99),
     Max(200), Name("Servo Maximum Stop Point Percentage"),
     Description("High-end " SERVO_DESCRIPTION_SUFFIX));
+CDI_GROUP_ENTRY(servo_enable_buzzkill, Uint8ConfigEntry, Default(1), Min(0), Max(1), Name("Enable Buzzkill"),
+		Description("Disable Servo PWM signal after servo is done moving"));
 CDI_GROUP_END(); // ServoConsumerConfig
 
 #define SERVOCONSUMERCONFIG_RESET(servo)               \
 	servo.description().write(fd, "");                 \
 	CDI_FACTORY_RESET(servo.servo_min_percent);        \
 	CDI_FACTORY_RESET(servo.servo_max_percent);        \
+	CDI_FACTORY_RESET(servo.servo_enable_buzzkill);    \
 
 } // namespace openlcb
 
