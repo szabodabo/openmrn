@@ -90,7 +90,7 @@ template <uint32_t GPIOx, uint16_t PIN, uint8_t PIN_NUM> struct Stm32GpioDefs
         }
     }
 
-    /// Sets the output pin to a given level.
+    /// @return whether the pin is currently set to high.
     static bool get()
     {
         return port()->IDR & pin();

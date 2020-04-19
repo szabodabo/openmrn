@@ -38,6 +38,10 @@
 // @todo need adjust to F0 F1 etc.
 #include "stm32f3xx_ll_rcc.h"
 
+// Looks like these were renamed in a recent version of the HAL?
+#define HAL_I2C_Master_Sequential_Receive_IT HAL_I2C_Master_Seq_Receive_IT
+#define HAL_I2C_Master_Sequential_Transmit_IT HAL_I2C_Master_Seq_Transmit_IT
+
 // Enables the clock and resets the I2C peripheral.
 static void i2c_reset(I2C_TypeDef *port)
 {
