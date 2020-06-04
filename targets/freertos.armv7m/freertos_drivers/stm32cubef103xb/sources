@@ -39,7 +39,7 @@ CSRCS += stm32f1xx_hal_adc.c \
          stm32f1xx_hal_sd.c \
          stm32f1xx_hal_smartcard.c \
          stm32f1xx_hal_spi.c \
-         stm32f1xx_hal_spi_ex.c \
+#         stm32f1xx_hal_spi_ex.c \
          stm32f1xx_hal_tim.c \
          stm32f1xx_hal_tim_ex.c \
          stm32f1xx_hal_uart.c \
